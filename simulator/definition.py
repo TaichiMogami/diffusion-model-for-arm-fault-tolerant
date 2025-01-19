@@ -8,7 +8,7 @@ height = 720
 bone_length = height/10
 
 # バネの硬さ
-c = 8
+c = 10
 
 # アームのインスタンスを生成
 arm = Base(width/2, height-200)
