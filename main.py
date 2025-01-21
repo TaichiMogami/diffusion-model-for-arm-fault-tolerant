@@ -26,7 +26,6 @@ def move(path, while_sleep_time=0):
     model.load_state_dict(torch.load("data/model.pth"))
     #cudaメソッドを使用して、モデルのすべてのパラメータをGPUに転送する
     model = model.cuda()
-    position = []
     #torch.randnメソッドを使用して、標準正規分布に従うランダムな値を持つテンソルを生成する
     #armdef.arm.spring_joint_count*2の大きさのテンソルを生成
     xt = torch.randn(armdef.arm.spring_joint_count*2).cuda()
@@ -72,7 +71,8 @@ def move(path, while_sleep_time=0):
         for (x, y) in path:
             #指定された点に黒色の点を描画
             display.set_at((int(x), int(y)), (0, 0, 0))
-            position.append((int(x), int(y)))    
+            target_pos.append((int(x), int(y)))
+        # print(target_pos)   
         #アームを描画
         armdef.arm.draw(display)
         #画面を更新
@@ -86,7 +86,6 @@ def move(path, while_sleep_time=0):
             steps_ = 4
             #初回の処理が終了したので、firstをFalseにする
             first = False
-
     pygame.quit()
 
 
@@ -101,38 +100,29 @@ if __name__ == '__main__':
     x0 = armdef.width/2-100
     #円の半径を150に設定
     r = 150
-    # #外れ値を除いた移動平均を計算する関数を定義
-    # def filtered_mean(data, window_size=10):
-    #     # データの平均を計算
-    #     mean_x = sum([x for x, y in data])/len(data)
-    #     mean_y = sum([y for x, y in data])/len(data)
-    #     # 外れ値の基準を設定
-    #     threshold = 2
-    #     # 外れ値を除いたデータを格納するリストを設定
-    #     filtered_data = [(x, y) for x, y in data if abs(x-mean_x) < threshold and abs(y-mean_y) < threshold]
-    #     if len(filtered_data) == 0:
-    #         return mean_x, mean_y
-    #     filtered_mean_x = sum([x for x, y in filtered_data])/len(filtered_data)
-    #     filtered_mean_y = sum([y for x, y in filtered_data])/len(filtered_data)
-    #     return filtered_mean_x, filtered_mean_y
     
-    #移動平均を計算する関数を定義
-    def moving_average_2d(points, window_size=50):
-        df = pd.DataFrame(points)
-        df_ma = df.rolling(window=window_size, min_periods=1).mean()
-        result = df_ma.values.tolist()
-        return [tuple(points) for points in result]
     
-    #3周分の円の軌道を描画
-    for i in range(360*3):
-        #iを度数法からラジアンに変換
-        rad = np.deg2rad(i)
-        #円の軌道を描くための座標をリストlに格納
-        l += [(x0+r*np.cos(rad), y0+r*np.sin(rad))]
-    #lの移動平均を計算
-    low_pas_filtering = moving_average_2d(l)
-    # print(f'low_pas_filtering[:10]:',low_pas_filtering[:10])
-    # print(f'l[:10]:',l[:10])
+    # target_posを初期化
+    target_pos = []
+
+    #円の軌道を描くための座標を格納するリストlに座標を追加
+    for i in range(0, 360*3):
+        x = r*np.cos(np.radians(i))+x0
+        y = r*np.sin(np.radians(i))+y0
+        l.append((x, y))
+    
+    #平滑化処理を行う関数を定義
+    def apply_smoothing(target_pos, alpha=0.9):
+        #平滑化の適用
+        for i in range(1, len(target_pos)):
+            pre_x, pre_y = l[-1]
+            cur_x, cur_y = target_pos[i]
+            #平滑化計算
+            smoothed_x = alpha*pre_x+(1-alpha)*cur_x
+            smoothed_y = alpha*pre_y+(1-alpha)*cur_y
+            l.append((smoothed_x, smoothed_y))
+        return l
+    smoothed_path = apply_smoothing(target_pos)
     #l及びlow_pas_filteringの全てのデータをcsvファイルに書き込む
     def write_csv(data, filename):
         if not os.path.exists('l_data'):
@@ -140,20 +130,9 @@ if __name__ == '__main__':
         df = pd.DataFrame(data, columns=['x', 'y'])
         df.to_csv(filename, index=False)
     
-    write_csv(l, 'l_data/l.csv')
-    write_csv(low_pas_filtering, 'l_data/low_pas_filtering.csv')    
-    # # print(low_pas_filtering)
-    # segment = l[100:107]
-    # avg_x = sum([x for x, y in segment])/len(segment)
-    # avg_y = sum([y for x, y in segment])/len(segment)
-    # # print(sum(l[100:107])/7)
-    # avg_point = (avg_x, avg_y)
-    # print(avg_point)
-    # print(low_pas_filtering[104])
-    # print(len(low_pas_filtering))
-    #円の軌道を0.001秒間隔で描画
-    # move(l, 0.001)
-    move(low_pas_filtering,  0.001)
+    write_csv(smoothed_path, 'l_data/l.csv')
+    print(smoothed_path)
+    move(smoothed_path,  0.001)
     
     #low_pas_filtering上の点を線で結んだ上で描画
     
