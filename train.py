@@ -32,7 +32,7 @@ if __name__ == '__main__':
     )
 
     #エポック数を20に設定
-    epochs = 30
+    epochs = 20
     #Adamオプティマイザを使用して、モデルのパラメータを最適化（学習率は0.01）
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     #torch.optim.lr_scheduler.LinearLRメソッドを使用して、学習率を線形に減少させるスケジューラを生成

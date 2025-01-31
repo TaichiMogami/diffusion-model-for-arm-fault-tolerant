@@ -1,160 +1,169 @@
-import pygame
-from pygame.locals import *
-import numpy as np
-import torch
 import copy
-import time
-import pandas as pd
 import os
+import time
 
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import pygame
+import torch
+from pygame.locals import *
+from scipy.fft import fft, ifft
+
+from diffusion_model import Model, denormalize, extract, normalize, steps
 from simulator import definition as armdef
-from diffusion_model import Model, steps, extract, normalize, denormalize
 
 
-# pathの点を順番に移動する
-# while_sleep_timeは点を移動する間sleepする時間
-# 滑らかに移動をさせるために, 1ステップ前の入力信号に数ステップ分ノイズを加え, 数ステップ分デノイズしている
+def main():
+    draw_cirtcle()
+
+
 def move(path, while_sleep_time=0):
-    #pygameの初期化
     pygame.init()
-    #armdef.width(1280)×armdef.height(720)の大きさの画面を作る
     display = pygame.display.set_mode((armdef.width, armdef.height))
-    #Modelクラスのインスタンス生成
-    model = Model(steps)
-    #torch.loadで指定されたパスからモデルのパラメータを読み込む
-    #load_state_dictメソッドを利用して、これらのパラメータを現在のモデルインスタンスにロードする
+    model = Model(steps).cuda()
     model.load_state_dict(torch.load("data/model.pth"))
-    #cudaメソッドを使用して、モデルのすべてのパラメータをGPUに転送する
-    model = model.cuda()
-    #torch.randnメソッドを使用して、標準正規分布に従うランダムな値を持つテンソルを生成する
-    #armdef.arm.spring_joint_count*2の大きさのテンソルを生成
-    xt = torch.randn(armdef.arm.spring_joint_count*2).cuda()
-    #最初の実行時のみTrue
+    xt = torch.randn(armdef.arm.spring_joint_count * 2).cuda()
     first = True
-    #steps_にsteps(25)を代入
     steps_ = steps
-    #pathの点を順番に移動する
-    for (x, y) in path:
-        #モデルを評価モードに切り替える
-        model.eval()
-        #Yにyを代入
-        Y = y
-        #Xにxを代入
-        X = x
-        #torch.FloatTensorメソッドを使用して、XとYを要素とする1×2の32ビット浮動小数点数を要素とするテンソルを生成
-        pos = torch.FloatTensor([[X, Y]]).cuda()
-        #armにarmdef.armをdeepcoopy(深いコピー)したものを代入
-        arm_ = copy.deepcopy(armdef.arm)
-        #2週目以降の処理
-        if not first:
-            #xtを正規化
-            xt = normalize(xt)
-            #torch.randn_likeメソッドを使用して、標準正規分布に従う、xtと同じサイズのテンソルを生成
-            noise = torch.randn_like(xt).cuda()
-            #torch.Tensorメソッドを使用して、tに(steps-1)を要素として持つtensorを生成
-            #longメソッドを使用して、tをfloat型からlong型に変換
-            t = torch.Tensor([steps_-1]).long().cuda()
-            #extractメソッドを使用して、at_にtとxt.shapeを引数として渡したものを代入
-            at_ = extract(t, xt.shape)
-            #拡散モデルの定義に基づいて、xtにノイズを加える
-            xt = torch.sqrt(at_)*xt+torch.sqrt(1-at_)*noise
-        #xtに対してデノイズ処理を行う
-        xt = model.denoise(xt, steps_, pos)
-        #xの正規化処理をもとに戻す
-        xt = denormalize(xt)
-        #xtをnumpy配列からリストに変換
-        armdef.arm.calc(xt.tolist())
-        # print(xt)
-        #画面を白色で塗りつぶす
-        display.fill((255, 255, 255))
-        #pathの点を順番に描画
-        for (x, y) in path:
-            #指定された点に黒色の点を描画
-            display.set_at((int(x), int(y)), (0, 0, 0))
-            target_pos.append((int(x), int(y)))
-        # print(target_pos)   
-        #アームを描画
-        armdef.arm.draw(display)
-        #画面を更新
-        pygame.display.update()
-        #点を移動する間は、プログラムの実行を一時停止
-        time.sleep(while_sleep_time)
+    xt_list = []
 
-        #初回の処理
-        if first:
-            #steps_に4を代入
+    # 全ての xt を保存
+    for x, y in path:
+        model.eval()
+        pos = torch.FloatTensor([x, y]).cuda()
+
+        if not first:
+            xt_normalize = normalize(xt)
+            noise = torch.randn_like(xt_normalize).cuda()
+            t = torch.FloatTensor([steps_]).long().cuda()
+            at_ = extract(t, xt.shape)
+            xt_noised = torch.sqrt(at_) * xt_normalize + torch.sqrt(1 - at_) * noise
+            xt = model.denoise(xt_noised, steps_, pos)
+        else:
+            xt = model.denoise(xt, steps_, pos)
             steps_ = 4
-            #初回の処理が終了したので、firstをFalseにする
             first = False
+
+        xt_list.append(denormalize(xt).cpu().detach().numpy())
+
+    # 移動平均を適用
+    xt_array = np.array(xt_list)
+    df = pd.DataFrame(xt_array)
+    smoothed_df = moving_average_filter(df, window_size=10)
+    smoothed_xt_list = smoothed_df.values.tolist()
+    # 描画処理を変更
+    for smoothed_xt in smoothed_xt_list:
+        armdef.arm.calc(smoothed_xt)
+        display.fill((255, 255, 255))
+        for px, py in path:
+            display.set_at((int(px), int(py)), (0, 0, 0))
+        armdef.arm.draw(display)
+        pygame.display.update()
+        time.sleep(while_sleep_time)
+    # プロットを実行
+    plot_data(df, smoothed_df)
     pygame.quit()
 
 
+# 円の軌道を描かせる
+def draw_cirtcle():
+    # 円の軌道を描くための座標を格納するリストlを設定
+    path_coords = []
+    # 円の中心のx座標をarmdef.height/2-100に設定
+    y0 = armdef.height / 2 - 100
+    # 円の中心のy座標をarmdef.width/2に設定
+    x0 = armdef.width / 2
+    # 円の半径を150に設定
+    r = 150
+    # 円の軌道を描くための座標を格納するリストlに座標を追加
+    for i in range(0, 360 * 10):
+        x = r * np.cos(np.radians(i)) + x0
+        y = r * np.sin(np.radians(i)) + y0
+        path_coords.append((x, y))
+    move(path_coords, while_sleep_time=0.001)
+
+
+# データのプロットを行う関数を定義
+def plot_data(original_df, smoothed_df):
+    fig, axes = plt.subplots(6, 2, figsize=(20, 10))
+    for i in range(original_df.shape[1]):
+        ax = axes[i // 2, i % 2]
+        ax.plot(
+            original_df.index,
+            original_df.iloc[:, i],
+            label=f"Original Data {i + 1}",
+            linestyle="dashed",
+        )
+        ax.plot(
+            smoothed_df.index, smoothed_df.iloc[:, i], label=f"Smoothed Data {i + 1}"
+        )
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Signal Value")
+        ax.set_title(f"Data {i + 1}")
+        ax.legend()
+    plt.suptitle("Comparison of the Original and Smoothed Data")
+    plt.tight_layout()
+    plt.show()
+
+
+def moving_average_filter(df, window_size=10):
+    return df.rolling(window=window_size, min_periods=1).mean()
+
+
+# フーリエ変換を用いたローパスフィルタを行う関数を定義
+def fourier_transform(path, cutoff_frequency=10, sampling_interval=0.01):
+    """
+    フーリエ変換を用いたローパスフィルタ
+    """
+    xt_transpose = torch.stack(path).transpose(0, 1).cpu()
+
+    def apply_filter(one_axis_list):
+        xt_fft = fft(one_axis_list)
+        freq = np.fft.fftfreq(len(xt_fft), d=sampling_interval)
+        xt_fft[(freq > cutoff_frequency) | (freq < -cutoff_frequency)] = 0
+        return np.real(ifft(xt_fft))
+
+    filtered_axes = [apply_filter(one_axis) for one_axis in xt_transpose]
+    return np.array(filtered_axes).T.tolist()
+
+
+# 平滑化処理を行う関数を定義
+def apply_smoothing(target_pos, alpha=0.001):
+    xt_transpose = torch.stack(target_pos).transpose(0, 1).cpu().detach()
+
+    def smoothing(one_axis_list):
+        smoothed = [one_axis_list[0]]
+        for i in range(1, len(one_axis_list)):
+            smoothed.append(one_axis_list[i] * alpha + smoothed[i - 1] * (1 - alpha))
+        return smoothed
+
+    smoothed_axes = [smoothing(one_axis) for one_axis in xt_transpose.numpy()]
+    return np.array(smoothed_axes).T.tolist()
+
+
+# low_pass_filteredを入力信号として、手先位置を計算する関数を定義
+def calculate_end_effector_position(low_pass_filtered):
+    # ロボットアームの手先位置を格納するリストを設定
+    end_effector_positions = []
+    # low_pass_filteredの要素をタプルからリストに変換
+    low_pass_filtered = [list(xt) for xt in low_pass_filtered]
+    # ロボットアームの手先位置を計算
+    print("low_pass_filtered:", low_pass_filtered)
+    for xt in low_pass_filtered:
+        armdef.arm.calc(xt)
+        end_effector_positions.append(copy.deepcopy(armdef.arm.end_effector))
+    print("end_effector_positions:", end_effector_positions)
+    return end_effector_positions
+
+
+def write_csv(data, filename):
+    if not os.path.exists("filtered_data"):
+        os.mkdir("filtered_data")
+    df = pd.DataFrame(data, columns=["x", "y"])
+    df.to_csv(filename, index=False)
+
 
 # 円の軌道を描かせる
-if __name__ == '__main__':
-    #円の軌道を描くための座標を格納するリストlを設定
-    l = []
-    #円の中心のx座標をarmdef.height/2-100に設定
-    y0 = armdef.height/2-100
-    #円の中心のy座標をarmdef.width/2-100に設定
-    x0 = armdef.width/2-100
-    #円の半径を150に設定
-    r = 150
-    
-    
-    # target_posを初期化
-    target_pos = []
-
-    #円の軌道を描くための座標を格納するリストlに座標を追加
-    for i in range(0, 360*3):
-        x = r*np.cos(np.radians(i))+x0
-        y = r*np.sin(np.radians(i))+y0
-        l.append((x, y))
-    
-    #平滑化処理を行う関数を定義
-    def apply_smoothing(target_pos, alpha=0.9):
-        #平滑化の適用
-        for i in range(1, len(target_pos)):
-            pre_x, pre_y = l[-1]
-            cur_x, cur_y = target_pos[i]
-            #平滑化計算
-            smoothed_x = alpha*pre_x+(1-alpha)*cur_x
-            smoothed_y = alpha*pre_y+(1-alpha)*cur_y
-            l.append((smoothed_x, smoothed_y))
-        return l
-    smoothed_path = apply_smoothing(target_pos)
-    #l及びlow_pas_filteringの全てのデータをcsvファイルに書き込む
-    def write_csv(data, filename):
-        if not os.path.exists('l_data'):
-            os.mkdir('l_data')
-        df = pd.DataFrame(data, columns=['x', 'y'])
-        df.to_csv(filename, index=False)
-    
-    write_csv(smoothed_path, 'l_data/l.csv')
-    print(smoothed_path)
-    move(smoothed_path,  0.001)
-    
-    #low_pas_filtering上の点を線で結んだ上で描画
-    
-        
-        
-
-    # pygame.init()
-    # display = pygame.display.set_mode((armdef.width, armdef.height))
-
-    # model = Model(steps).cuda()
-    # model.load_state_dict(torch.load("data/model.pth"))
-    # model.eval()
-    # for i in range(10):
-    #     xt = torch.randn(armdef.arm.spring_joint_count*2).cuda()
-    #     pos = torch.FloatTensor([[150, 150]]).cuda()
-    #     xt = model.denoise(xt,25,pos)
-    #     xt = denormalize(xt)
-    #     print(xt)
-    #     armdef.arm.calc(xt.tolist())
-        
-    #     display.fill((255, 255, 255))
-    #     armdef.arm.draw(display)
-
-    #     pygame.display.update()
-    #     time.sleep(1)
+if __name__ == "__main__":
+    main()
