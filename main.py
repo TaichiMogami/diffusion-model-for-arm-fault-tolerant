@@ -52,7 +52,7 @@ def move(path, while_sleep_time=0):
     df = pd.DataFrame(xt_array)
     smoothed_df = moving_average_filter(df, window_size=10)
     smoothed_xt_list = smoothed_df.values.tolist()
-    # 描画処理を変更
+    # xt_list の計算を行ってその後、ローパスフィルタを適用
     for smoothed_xt in smoothed_xt_list:
         armdef.arm.calc(smoothed_xt)
         display.fill((255, 255, 255))
