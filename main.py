@@ -4,11 +4,14 @@ import numpy as np
 import torch
 import copy
 import time
+import pandas as pd
+import matplotlib.pyplot as plt
 
 from simulator import definition as armdef
 from diffusion_model import ControlNet, ModelForXY, ModelForTheta, steps, extract, normalize, denormalize
 
-
+#制御信号を保存するリスト
+xt_list = []
 # pathの点を順番に移動する
 # while_sleep_timeは点を移動する間sleepする時間
 # 滑らかに移動をさせるために, 1ステップ前の入力信号に数ステップ分ノイズを加え, 数ステップ分デノイズしている
@@ -77,6 +80,7 @@ def xy_and_theta(x, y, theta, display):
 
     Y = y
     X = x
+    #
     pos = torch.FloatTensor([[X, Y]]).cuda()
     theta = torch.FloatTensor([[theta]]).cuda()
 
@@ -112,24 +116,51 @@ def controlnet(x, y, theta, display):
     X = x
     pos = torch.FloatTensor([[X, Y]]).cuda()
     theta = torch.FloatTensor([[theta]]).cuda()
-
     xt = model.denoise(xt, steps, pos, theta)
+    xt_list.append(xt)
 
-    arm_ = copy.deepcopy(armdef.arm)
-
-    xt = denormalize(xt)
+#アームを描画する関数を設定
+def draw_arm(x, y, xt, display):
+    xt = denormalize(torch.tensor(xt)).cuda()
     armdef.arm.calc(xt.tolist())
     display.fill((255, 255, 255))
-    pygame.draw.line(display, (255, 0, 0), (x, y), (np.cos(np.pi/2-theta.item())*70+x, np.sin(np.pi/2-theta.item())*70+y), 5)
+    pygame.draw.line(display, (255, 0, 0), (x, y), (np.cos(np.pi/2-theta)*70+x, np.sin(np.pi/2-theta)*70+y), 5)
     armdef.arm.draw(display)
     font = pygame.font.Font(None,  24)
     text1 = font.render(str(f"result: {armdef.arm.last.x[1]/3.14*180} degree"), True, (0, 0, 0))
-    text2 = font.render(str(f"target: {theta.item()/3.14*180} degree"), True, (0, 0, 0))
+    text2 = font.render(str(f"target: {theta/3.14*180} degree"), True, (0, 0, 0))
     display.blit(text1, (10,10))
     display.blit(text2, (10,40))
     pygame.draw.circle(display, (0, 0, 0), (int(x), int(y)), 10)
     pygame.display.update()
     pygame.time.wait(100)
+
+#移動平均を適用する関数を定義
+def moving_average_filter(df, window_size=10):
+    return df.rolling(window=window_size, min_periods=1, axis=0).mean()
+
+#データのプロットを行う関数を定義
+def plot_data(original_df, smoothed_df):
+    fig, axes = plt.subplots(6, 2, figsize=(20, 10))
+    for i in range(original_df.shape[1]):
+        ax = axes[i // 2, i % 2]
+        ax.plot(
+            original_df.index,
+            original_df.iloc[:, i],
+            label=f"Input Signal {i + 1}",
+            linestyle="dashed",
+        )
+        ax.plot(
+            smoothed_df.index, smoothed_df.iloc[:, i], label=f"Smoothed Data {i + 1}"
+        )
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Signal Value")
+        ax.set_title(f"Data {i + 1}")
+        ax.legend()
+    plt.suptitle("Comparison of the Original and Smoothed Data")
+    plt.tight_layout()
+    plt.show()
+
 
 
 if __name__ == '__main__':
@@ -140,11 +171,26 @@ if __name__ == '__main__':
     target_y = armdef.height/2-150
     print("target_x = " , target_x)
     print("target_y = ", target_y)
-    for i in range(-20,20):
-        #controlnet(armdef.width/2, armdef.height/2-200, i/20, display)
-        #controlnet(armdef.width/2, armdef.height/2-100, i/20, display)
-        #controlnet(armdef.width/2, armdef.height/2-150, i/20, display)
-        controlnet(target_x, target_y, 3.14/2*i/20, display)
+    
+    theta_values = [3.14 / 2 * i / 20 for i in range(-20, 20)]
+    # additional_values= [j /10 for j in range(-10, 10)]
+    for theta in (theta_values):
+        controlnet(target_x, target_y, theta, display)
+    # print("xt_list = ", xt_list)
+    xt_array = torch.stack(xt_list).cpu().detach().numpy()
+    df = pd.DataFrame(xt_array)
+    # print("df = ", df)
+    smoothed_df = moving_average_filter(df)
+    # print("smoothed_df = ", smoothed_df)
+    smoothed_xt_array = smoothed_df.values.tolist()
+    
+    #ローパスフィルタを適用した後のxtを用いて手先位置を計算し描画
+    for xt in smoothed_xt_array:
+        draw_arm(target_x, target_y, xt, display)
+    
+    #移動平均をかける前後のデータをプロット
+    plot_data(df, smoothed_df)
+    
     pygame.quit()
 
     #for i in range(-20,20):
