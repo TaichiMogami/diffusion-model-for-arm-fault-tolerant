@@ -6,6 +6,7 @@ import copy
 import time
 import pandas as pd
 import matplotlib.pyplot as plt
+import itertools
 
 from simulator import definition as armdef
 from diffusion_model import ControlNet, ModelForXY, ModelForTheta, steps, extract, normalize, denormalize
@@ -116,6 +117,7 @@ def controlnet(x, y, theta, display):
     X = x
     pos = torch.FloatTensor([[X, Y]]).cuda()
     theta = torch.FloatTensor([[theta]]).cuda()
+    print("type(theta) = ", type(theta))
     xt = model.denoise(xt, steps, pos, theta)
     xt_list.append(xt)
 
@@ -173,15 +175,14 @@ if __name__ == '__main__':
     print("target_y = ", target_y)
     
     theta_values = [3.14 / 2 * i / 20 for i in range(-20, 20)]
-    # additional_values= [j /10 for j in range(-10, 10)]
-    for theta in (theta_values):
+    # additional_values= [j /10 for j in range(-5, 5)]
+    # for additional in range(len(additional_values)):
+    for theta in theta_values:
         controlnet(target_x, target_y, theta, display)
     # print("xt_list = ", xt_list)
     xt_array = torch.stack(xt_list).cpu().detach().numpy()
     df = pd.DataFrame(xt_array)
-    # print("df = ", df)
     smoothed_df = moving_average_filter(df)
-    # print("smoothed_df = ", smoothed_df)
     smoothed_xt_array = smoothed_df.values.tolist()
     
     #ローパスフィルタを適用した後のxtを用いて手先位置を計算し描画
