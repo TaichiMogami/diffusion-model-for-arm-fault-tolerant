@@ -13,6 +13,8 @@ from diffusion_model import ControlNet, ModelForXY, ModelForTheta, steps, extrac
 
 #制御信号を保存するリスト
 xt_list = []
+#thetaの値を保存するリスト
+theta_tensors = []
 # pathの点を順番に移動する
 # while_sleep_timeは点を移動する間sleepする時間
 # 滑らかに移動をさせるために, 1ステップ前の入力信号に数ステップ分ノイズを加え, 数ステップ分デノイズしている
@@ -117,12 +119,12 @@ def controlnet(x, y, theta, display):
     X = x
     pos = torch.FloatTensor([[X, Y]]).cuda()
     theta = torch.FloatTensor([[theta]]).cuda()
-    print("type(theta) = ", type(theta))
+    print("theta = ", theta)
     xt = model.denoise(xt, steps, pos, theta)
     xt_list.append(xt)
 
 #アームを描画する関数を設定
-def draw_arm(x, y, xt, display):
+def draw_arm(x, y, xt, theta, display):
     xt = denormalize(torch.tensor(xt)).cuda()
     armdef.arm.calc(xt.tolist())
     display.fill((255, 255, 255))
@@ -179,15 +181,16 @@ if __name__ == '__main__':
     # for additional in range(len(additional_values)):
     for theta in theta_values:
         controlnet(target_x, target_y, theta, display)
-    # print("xt_list = ", xt_list)
+        theta_tensors.append(theta)
+    print("theta_tensors = ", theta_tensors)
     xt_array = torch.stack(xt_list).cpu().detach().numpy()
     df = pd.DataFrame(xt_array)
     smoothed_df = moving_average_filter(df)
     smoothed_xt_array = smoothed_df.values.tolist()
     
     #ローパスフィルタを適用した後のxtを用いて手先位置を計算し描画
-    for xt in smoothed_xt_array:
-        draw_arm(target_x, target_y, xt, display)
+    for xt,theta in zip(smoothed_xt_array, theta_tensors):
+        draw_arm(target_x, target_y, xt, theta, display)
     
     #移動平均をかける前後のデータをプロット
     plot_data(df, smoothed_df)
