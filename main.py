@@ -14,7 +14,7 @@ from diffusion_model import ControlNet, ModelForXY, ModelForTheta, steps, extrac
 #制御信号を保存するリスト
 xt_list = []
 #thetaの値を保存するリスト
-theta_tensors = []
+target_thetas = []
 # pathの点を順番に移動する
 # while_sleep_timeは点を移動する間sleepする時間
 # 滑らかに移動をさせるために, 1ステップ前の入力信号に数ステップ分ノイズを加え, 数ステップ分デノイズしている
@@ -181,15 +181,15 @@ if __name__ == '__main__':
     # for additional in range(len(additional_values)):
     for theta in theta_values:
         controlnet(target_x, target_y, theta, display)
-        theta_tensors.append(theta)
-    print("theta_tensors = ", theta_tensors)
+        target_thetas.append(theta)
+    print("theta_tensors = ", target_thetas)
     xt_array = torch.stack(xt_list).cpu().detach().numpy()
     df = pd.DataFrame(xt_array)
     smoothed_df = moving_average_filter(df)
     smoothed_xt_array = smoothed_df.values.tolist()
     
     #ローパスフィルタを適用した後のxtを用いて手先位置を計算し描画
-    for xt,theta in zip(smoothed_xt_array, theta_tensors):
+    for xt,theta in zip(smoothed_xt_array, target_thetas):
         draw_arm(target_x, target_y, xt, theta, display)
     
     #移動平均をかける前後のデータをプロット
