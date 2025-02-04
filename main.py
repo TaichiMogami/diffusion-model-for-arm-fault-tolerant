@@ -8,7 +8,6 @@ import pandas as pd
 import pygame
 import torch
 from pygame.locals import *
-from scipy.fft import fft, ifft
 
 from diffusion_model import Model, denormalize, extract, normalize, steps
 from simulator import definition as armdef
@@ -77,7 +76,9 @@ def draw_cirtcle():
     # 円の半径を150に設定
     r = 150
     # 円の軌道を描くための座標を格納するリストlに座標を追加
-    for i in range(0, 360 * 10):
+    circle = np.arange(0, 360, 0.1)
+    circle = np.round(circle, 1)
+    for i in range(len(circle)):
         x = r * np.cos(np.radians(i)) + x0
         y = r * np.sin(np.radians(i)) + y0
         path_coords.append((x, y))
@@ -85,47 +86,46 @@ def draw_cirtcle():
 
 
 # データのプロットを行う関数を定義
-def plot_data(original_df, smoothed_df):
-    fig, axes = plt.subplots(6, 2, figsize=(20, 10))
-    for i in range(original_df.shape[1]):
-        ax = axes[i // 2, i % 2]
-        ax.plot(
-            original_df.index,
-            original_df.iloc[:, i],
-            label=f"Original Data {i + 1}",
-            linestyle="dashed",
-        )
-        ax.plot(
-            smoothed_df.index, smoothed_df.iloc[:, i], label=f"Smoothed Data {i + 1}"
-        )
+def plot_data(
+    original_df,
+    smoothed_df,
+    num_cols=2,
+    figure_size=(15, 10),
+    title="Comparison of the Original and Smoothed Data",
+):
+    # 信号の数
+    num_signals = len(original_df.columns)
+    # 行数の計算
+    num_rows = (num_signals + num_cols - 1) // num_cols
+    # FigureとAxesの作成
+    fig, axes = plt.subplots(num_rows, num_cols, figsize=figure_size)
+    # np.ravel()で1次元配列に変換
+    axes = np.ravel(axes)
+    for i in range(num_signals):
+        ax = axes[i]
+        # x軸
+        x_original = original_df.index.to_numpy()
+        x_smoothed = smoothed_df.index.to_numpy()
+        # y軸
+        y_original = original_df.iloc[:, i].to_numpy()
+        y_smoothed = smoothed_df.iloc[:, i].to_numpy()
+        # 元データのプロット
+        ax.plot(x_original, y_original, label=f"Original Data{i + 1}", color="blue")
+        # 平滑化データのプロット
+        ax.plot(x_smoothed, y_smoothed, label=f"Smoothed Data{i + 1}", color="red")
+        # ラベルの設定
         ax.set_xlabel("Time")
         ax.set_ylabel("Signal Value")
-        ax.set_title(f"Data {i + 1}")
+        ax.set_title(f"Signal{i + 1}")
         ax.legend()
-    plt.suptitle("Comparison of the Original and Smoothed Data")
+    # 全体のタイトルの設定及びレイアウトの調整
+    plt.suptitle(title)
     plt.tight_layout()
     plt.show()
 
 
 def moving_average_filter(df, window_size=10):
     return df.rolling(window=window_size, min_periods=1).mean()
-
-
-# フーリエ変換を用いたローパスフィルタを行う関数を定義
-def fourier_transform(path, cutoff_frequency=10, sampling_interval=0.01):
-    """
-    フーリエ変換を用いたローパスフィルタ
-    """
-    xt_transpose = torch.stack(path).transpose(0, 1).cpu()
-
-    def apply_filter(one_axis_list):
-        xt_fft = fft(one_axis_list)
-        freq = np.fft.fftfreq(len(xt_fft), d=sampling_interval)
-        xt_fft[(freq > cutoff_frequency) | (freq < -cutoff_frequency)] = 0
-        return np.real(ifft(xt_fft))
-
-    filtered_axes = [apply_filter(one_axis) for one_axis in xt_transpose]
-    return np.array(filtered_axes).T.tolist()
 
 
 # 平滑化処理を行う関数を定義
