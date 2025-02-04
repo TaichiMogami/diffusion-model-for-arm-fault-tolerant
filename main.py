@@ -107,12 +107,7 @@ def xy_and_theta(x, y, theta, display):
     pygame.time.wait(100)
 
 def controlnet(x, y, theta, display):
-    model = ControlNet(steps)
-    model.load_state_dict(torch.load("data/controlnet_xy_and_theta.pth"))
-    #model.load_state_dict(torch.load("data/controlnet_xy.pth"))
-    model = model.cuda()
     model.eval()
-
     xt = torch.randn(armdef.arm.spring_joint_count*2).cuda()
 
     Y = y
@@ -176,6 +171,10 @@ if __name__ == '__main__':
     print("target_x = " , target_x)
     print("target_y = ", target_y)
     
+    model = ControlNet(steps)
+    model.load_state_dict(torch.load("data/controlnet_xy_and_theta.pth"))
+    #model.load_state_dict(torch.load("data/controlnet_xy.pth"))
+    model = model.cuda()
     theta_values = [3.14 / 2 * i / 20 for i in range(-20, 20)]
     # additional_values= [j /10 for j in range(-5, 5)]
     # for additional in range(len(additional_values)):
