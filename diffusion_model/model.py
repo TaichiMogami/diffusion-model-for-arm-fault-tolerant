@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import math
 
+#付加的な情報を付け加えるためのMiddleLayerを定義
 class MiddleLayer(nn.Module):
     def __init__(self, target_d, d):
         super().__init__()
@@ -66,6 +67,7 @@ class Model(nn.Module):
             xt = (1/torch.sqrt(alpha[i]))*(xt-(beta[i]/torch.sqrt(1-alpha_[i]))*self(
                 xt_, step, pos))+torch.sqrt((1-alpha_[i-1])/(1-alpha_[i])*beta[i])*z
         xt = xt.view(-1)
+        print("after denoise_once:",xt)
         return xt
 
 class ModelForXY(Model):
@@ -180,17 +182,17 @@ class ControlNet(nn.Module):
             xt = xt.view(-1)
         return xt
 
-    def denoise_once(self, xt: torch.Tensor, i: int, pos):
+    def denoise_once(self, xt: torch.Tensor, i: int, pos, theta):
         step = torch.FloatTensor([i]).cuda()
         z = torch.randn_like(xt)
         step = torch.Tensor([i]).long()
         xt_ = xt.view(1, -1)
         if i == 1:
             xt = (
-                1/torch.sqrt(alpha[i]))*(xt - (torch.sqrt(beta[i]))*self(xt_, step, pos))
+                1/torch.sqrt(alpha[i]))*(xt - (torch.sqrt(beta[i]))*self(xt_, step, pos, theta))
         else:
             xt = (1/torch.sqrt(alpha[i]))*(xt-(beta[i]/torch.sqrt(1-alpha_[i]))*self(
-                xt_, step, pos))+torch.sqrt((1-alpha_[i-1])/(1-alpha_[i])*beta[i])*z
+                xt_, step, pos, theta))+torch.sqrt((1-alpha_[i-1])/(1-alpha_[i])*beta[i])*z
         xt = xt.view(-1)
         return xt
 
