@@ -41,7 +41,6 @@ def generate_control_signals(target_x, target_y, model):
     
     #xt_all_runsをnumpyのfloat32に変換
     xt_all_runs_np = np.array(xt_all_runs, dtype=np.float32)
-    print(f"xt_all_runs_np_shape: {xt_all_runs_np.shape}")
     
     #2次元の形状に変換
     xt_all_runs_reshaped = xt_all_runs_np.reshape(-1, 12)
@@ -52,6 +51,8 @@ def generate_control_signals(target_x, target_y, model):
     #移動平均フィルタを適用
     df_filtered = moving_average_filter(df, window_size=100)
     
+    #データをプロット
+    plot_data(df, df_filtered)
     #描画処理
     for run_idx, xt_history in enumerate(xt_all_runs):
         theta = target_thetas[run_idx] # 対応するthetaを取得
@@ -99,26 +100,34 @@ def controlnet(x, y, theta, steps, model, display):
     return xt_history # return each xt data
 
 
-#xtの各ステップの値を平均してプロットする関数を定義
-def plot_xt_evolution(xt_history):
-    xt_all_runs_np = np.array([np.array([xt.cpu().detach().numpy() for xt in run]) for run in xt_all_runs])  # (40, steps, 12)
-    xt_mean = np.mean(xt_all_runs_np, axis=0)  # (steps, 12) - 40回分の平均をとる
-    steps = np.arange(len(xt_mean))
+#dfとdf_filteredを引数に取り，プロットする関数を定義
+def plot_data(df, df_filtered):
+    num_signals = df.shape[1]
+    num_columns = 2
+    num_rows = (num_signals + num_columns - 1) // num_columns
+    fig, axes = plt.subplots(num_rows, num_columns, figsize=(15, 10))
+    axes = np.ravel(axes)
 
-    num_dims = xt_mean.shape[1]  # 12次元
-    fig, axes = plt.subplots(num_dims, 1, figsize=(8, 2 * num_dims), sharex=True)
+    for i in range(num_signals):
+        ax = axes[i]
+        plot_signal(ax, df, df_filtered, i)
 
-    for i in range(num_dims):
-        axes[i].plot(steps[::-1], xt_mean[:, i], marker="o", linestyle="-", label=f"Dim {i+1}")  # 逆順に修正
-        axes[i].set_ylabel(f"Dim {i+1}")
-        axes[i].legend()
-        axes[i].grid(True)
-
-    axes[-1].set_xlabel("Denoising Step")  # 最後のプロットに x 軸ラベルを設定
-    fig.suptitle("Mean Evolution of xt over denoising steps (averaged over 40 runs)")
+    fig.suptitle('Original and filtered signals')
     plt.tight_layout()
     plt.show()
 
+def plot_signal(ax, df, df_filtered, signal_index):
+    x_df = df.index.to_numpy()
+    x_filtered_df = df_filtered.index.to_numpy()
+    y_df = df.iloc[:, signal_index].to_numpy()
+    y_filtered_df = df_filtered.iloc[:, signal_index].to_numpy()
+
+    ax.plot(x_df, y_df, label=f"Original signal {signal_index + 1}", color='blue')
+    ax.plot(x_filtered_df, y_filtered_df, label=f"Filtered signal {signal_index + 1}", color='red')
+    ax.set_xlabel('Time')
+    ax.set_ylabel('Signal value')
+    ax.set_title(f"Signal {signal_index + 1}")
+    ax.legend()
 
 def draw_arm(x, y, xt, theta, display):
     armdef.arm.calc(xt)
