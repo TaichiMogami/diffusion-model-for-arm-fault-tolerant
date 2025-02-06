@@ -29,30 +29,35 @@ def load_model(model_path):
     return model.cuda()
 
 def generate_control_signals(target_x, target_y, model):
+    global xt_all_runs, target_thetas  # グローバル変数を参照
+    display = pygame.display.set_mode((armdef.width, armdef.height))
     for i in range(-20, 20):
         theta = (3.14 / 2) * (i / 20)
-        xt_all_runs = controlnet(target_x, target_y, theta, steps, model, display=pygame.display.set_mode((armdef.width, armdef.height)))
         target_thetas.append(theta)
+        
+        #制御信号を生成し，保存
+        xt_history = controlnet(target_x, target_y, theta, steps, model, display)
+        xt_all_runs.append(xt_history)
     
-    # xt_all_runsの中身をfloat値からnumpyのfloat32型に変換
+    #xt_all_runsをnumpyのfloat32に変換
     xt_all_runs_np = np.array(xt_all_runs, dtype=np.float32)
-    xt_all_runs_reshaped = xt_all_runs_np.reshape(-1, 12) #(960, 12)
-    print("xt_all_runs_np shape:", xt_all_runs_np.shape)
+    print(f"xt_all_runs_np_shape: {xt_all_runs_np.shape}")
     
-    # xt_all_runs_reshapedをデータフレームに変換
-    xt_all_runs_df = pd.DataFrame(xt_all_runs_reshaped)
+    #2次元の形状に変換
+    xt_all_runs_reshaped = xt_all_runs_np.reshape(-1, 12)
     
-    # xt_all_runsに移動平均フィルタを適用
-    xt_all_runs = moving_average_filter(xt_all_runs_df, window_size=10)
+    #データフレームに変換
+    df = pd.DataFrame(xt_all_runs_reshaped)
     
-    # xt_all_runsの形状を確認
-    print("xt_all_runs type:", type(xt_all_runs))
-    print("xt_all_runs shape:", xt_all_runs.shape)
-    print("xt_all_runs:", xt_all_runs)
+    #移動平均フィルタを適用
+    df_filtered = moving_average_filter(df, window_size=100)
     
-    return xt_all_runs, target_thetas
-
-
+    #描画処理
+    for run_idx, xt_history in enumerate(xt_all_runs):
+        theta = target_thetas[run_idx] # 対応するthetaを取得
+        for xt in xt_history:
+            draw_arm(armdef.width / 2, armdef.height / 2 - 150, xt, theta, display)
+    return df_filtered, target_thetas
 
 def controlnet(x, y, theta, steps, model, display):
     global xt_all_runs  # グローバル変数を参照
@@ -88,14 +93,10 @@ def controlnet(x, y, theta, steps, model, display):
                 xt = denormalize(xt)
                 xt = xt.tolist()
             first = False
-
-        draw_arm(x, y, xt, theta, display)  # デノイズのstepごとにアームを描画
-        xt_history.append(xt)  # step数分のxtの履歴を保存
-    # print(f"xt_history: {xt_history}")
         
-    xt_all_runs.append(xt_history)  # 40回分のxtの履歴を保存
-    print(f"xt_all_runs_shape: {len(xt_all_runs)}")
-    return xt_all_runs
+
+        xt_history.append(xt)  # step数分のxtの履歴を保存
+    return xt_history # return each xt data
 
 
 #xtの各ステップの値を平均してプロットする関数を定義
@@ -131,7 +132,7 @@ def draw_arm(x, y, xt, theta, display):
     display.blit(text2, (10, 40))
     pygame.draw.circle(display, (0, 0, 0), (int(x), int(y)), 10)
     pygame.display.update()
-    pygame.time.wait(100)
+    pygame.time.wait(1)
 
 def moving_average_filter(df, window_size=3):
     return df.rolling(window=window_size, min_periods=1, axis= 0).mean()
