@@ -18,16 +18,9 @@ target_thetas = []
 xt_all_runs = []
 def main():
     pygame.init()
-    display = pygame.display.set_mode((armdef.width, armdef.height))
     target_x, target_y = armdef.width / 2, armdef.height / 2 - 150
     model = load_model("data/controlnet_xy_and_theta.pth")
-
-    xt_list, target_thetas = generate_control_signals(target_x, target_y, model)
-    smoothed_xt_list = smooth_control_signals(xt_list)
-    for xt, theta in zip(smoothed_xt_list, target_thetas):
-        draw_arm(target_x, target_y, xt, theta, display)
-    plot_xt_evolution(xt_all_runs)
-
+    generate_control_signals(target_x, target_y, model)
     pygame.quit()
 
 def load_model(model_path):
@@ -36,30 +29,43 @@ def load_model(model_path):
     return model.cuda()
 
 def generate_control_signals(target_x, target_y, model):
-    xt_list, target_thetas = [], []
     for i in range(-20, 20):
         theta = (3.14 / 2) * (i / 20)
-        xt = controlnet(target_x, target_y, theta, steps, model,display=pygame.display.set_mode((armdef.width, armdef.height)))
-        xt_list.append(xt)
+        xt_all_runs = controlnet(target_x, target_y, theta, steps, model, display=pygame.display.set_mode((armdef.width, armdef.height)))
         target_thetas.append(theta)
-    return xt_list, target_thetas
+    
+    # xt_all_runsの中身をfloat値からnumpyのfloat32型に変換
+    xt_all_runs_np = np.array(xt_all_runs, dtype=np.float32)
+    xt_all_runs_reshaped = xt_all_runs_np.reshape(-1, 12) #(960, 12)
+    print("xt_all_runs_np shape:", xt_all_runs_np.shape)
+    
+    # xt_all_runs_reshapedをデータフレームに変換
+    xt_all_runs_df = pd.DataFrame(xt_all_runs_reshaped)
+    
+    # xt_all_runsに移動平均フィルタを適用
+    xt_all_runs = moving_average_filter(xt_all_runs_df, window_size=10)
+    
+    # xt_all_runsの形状を確認
+    print("xt_all_runs type:", type(xt_all_runs))
+    print("xt_all_runs shape:", xt_all_runs.shape)
+    print("xt_all_runs:", xt_all_runs)
+    
+    return xt_all_runs, target_thetas
 
-def smooth_control_signals(xt_list):
-    xt_array = torch.stack(xt_list).numpy()
-    df = pd.DataFrame(xt_array)
-    smoothed_df = df
-    return smoothed_df.to_numpy().tolist()
+
 
 def controlnet(x, y, theta, steps, model, display):
+    global xt_all_runs  # グローバル変数を参照
     xt = torch.randn(armdef.arm.spring_joint_count * 2).cuda()
     first = True
     steps_ = steps
-    xt_history = [] # xtの履歴を保存するリスト
+    xt_history = []  # xtの履歴を保存するリスト
     
-    for i in reversed(range(1, steps_ )):
+    for i in reversed(range(1, steps_)):
         model.eval()
         pos = torch.FloatTensor([[x, y]]).cuda()
         theta_tensor = torch.FloatTensor([[theta]]).cuda()
+        
         if not first:
             xt = torch.tensor(xt, dtype=torch.float32).cuda()
             xt = normalize(xt)
@@ -82,11 +88,15 @@ def controlnet(x, y, theta, steps, model, display):
                 xt = denormalize(xt)
                 xt = xt.tolist()
             first = False
-        draw_arm(x, y, xt, theta, display) #デノイズのstepごとにアームを描画
-        xt_history.append(xt) #step数分のxtの履歴を保存
+
+        draw_arm(x, y, xt, theta, display)  # デノイズのstepごとにアームを描画
+        xt_history.append(xt)  # step数分のxtの履歴を保存
+    # print(f"xt_history: {xt_history}")
         
-    xt_all_runs.append(xt_history) # 40回分のxtの履歴を保存
-    return xt  
+    xt_all_runs.append(xt_history)  # 40回分のxtの履歴を保存
+    print(f"xt_all_runs_shape: {len(xt_all_runs)}")
+    return xt_all_runs
+
 
 #xtの各ステップの値を平均してプロットする関数を定義
 def plot_xt_evolution(xt_history):
@@ -126,43 +136,6 @@ def draw_arm(x, y, xt, theta, display):
 def moving_average_filter(df, window_size=3):
     return df.rolling(window=window_size, min_periods=1, axis= 0).mean()
 
-
-def plot_data(
-    original_df,
-    smoothed_df,
-    num_cols=2,
-    figure_size=(15, 10),
-    title="Comparison of the Original and Smoothed Data",
-):
-    # 信号の数
-    num_signals = len(original_df.columns)
-    # 行数の計算
-    num_rows = (num_signals + num_cols - 1) // num_cols
-    # FigureとAxesの作成
-    fig, axes = plt.subplots(num_rows, num_cols, figsize=figure_size)
-    # np.ravel()で1次元配列に変換
-    axes = np.ravel(axes)
-    for i in range(num_signals):
-        ax = axes[i]
-        # x軸
-        x_original = original_df.index.to_numpy()
-        x_smoothed = smoothed_df.index.to_numpy()
-        # y軸
-        y_original = original_df.iloc[:, i].to_numpy()
-        y_smoothed = smoothed_df.iloc[:, i].to_numpy()
-        # 元データのプロット
-        ax.plot(x_original, y_original, label=f"Original Data{i + 1}", color="blue")
-        # 平滑化データのプロット
-        ax.plot(x_smoothed, y_smoothed, label=f"Smoothed Data{i + 1}", color="red")
-        # ラベルの設定
-        ax.set_xlabel("Time")
-        ax.set_ylabel("Signal Value")
-        ax.set_title(f"Signal{i + 1}")
-        ax.legend()
-    # 全体のタイトルの設定及びレイアウトの調整
-    plt.suptitle(title)
-    plt.tight_layout()
-    plt.show()
 
 if __name__ == '__main__':
     main()
