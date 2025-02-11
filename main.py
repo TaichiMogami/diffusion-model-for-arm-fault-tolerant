@@ -3,30 +3,24 @@ import copy
 import time
 import pandas as pd
 import matplotlib.pyplot as plt
-import itertools
 import pygame
 import numpy as np
 import tqdm
-
 from simulator import definition as armdef
 from diffusion_model import (
     ControlNet,
     ModelForXY,
     ModelForTheta,
-    steps,
+    denoise_steps,
     extract,
     normalize,
     denormalize,
 )
 
-# 制御信号を保存するリスト
-xt_list = []
-# thetaの値を保存するリスト
-target_thetas = []
-# 全てのxtの履歴を保存するリスト
-xt_all_runs = []
 
-
+# ----------------------------------------------------------
+# Main entry point
+# ----------------------------------------------------------
 def main():
     pygame.init()
     target_x, target_y = armdef.width / 2, armdef.height / 2 - 150
@@ -35,119 +29,108 @@ def main():
     pygame.quit()
 
 
+# ----------------------------------------------------------
+# Load a model from a given path and put it on GPU
+# ----------------------------------------------------------
 def load_model(model_path):
-    model = ControlNet(steps)
+    model = ControlNet(denoise_steps)
     model.load_state_dict(torch.load(model_path))
     return model.cuda()
 
 
+# ----------------------------------------------------------
+# Generate control signals, visualize and plot data.
+# This function builds target angles locally, calls controlnet
+# to get the history of signals, applies filtering and plots data.
+# ----------------------------------------------------------
 def generate_control_signals(target_x, target_y, model):
-    global xt_all_runs, target_thetas  # グローバル変数を参照
+    # Create the display window.
     display = pygame.display.set_mode((armdef.width, armdef.height))
-    for i in tqdm.tqdm(range(-20, 20)):
-        theta = (3.14 / 2) * (i / 20)
-        target_thetas.append(theta)
 
-        # 制御信号を生成し，保存
-        xt_history = controlnet(target_x, target_y, theta, steps, model, display)
-        xt_all_runs.append(xt_history)
+    # Build the list of target theta values.
+    target_thetas = [(3.14 / 2) * (i / 50) for i in tqdm.tqdm(range(-75, 75))]
 
-    # xt_all_runsをnumpyのfloat32に変換
+    # Compute control signals for all target thetas.
+    xt_all_runs = controlnet(target_x, target_y, denoise_steps, model, target_thetas)
+
+    # Convert the control signals to a numpy array with float32 type.
     xt_all_runs_np = np.array(xt_all_runs, dtype=np.float32)
 
-    # 2次元の形状に変換
+    # Reshape so that each row has 12 elements (assumed signal dimension).
     xt_all_runs_reshaped = xt_all_runs_np.reshape(-1, 12)
 
-    # データフレームに変換
+    # Create a dataframe from the reshaped array.
     df = pd.DataFrame(xt_all_runs_reshaped)
 
-    # 移動平均フィルタを適用
-    df_filtered = moving_average_filter(df)
+    # Apply a moving average filter.
+    df_filtered = df
 
-    # データをプロット
+    # Plot both original and filtered data.
     plot_data(df, df_filtered)
-    # 描画処理
-    for run_idx, xt_history in enumerate(xt_all_runs):
-        theta = target_thetas[run_idx]  # 対応するthetaを取得
-        for xt in xt_history:
-            draw_arm(armdef.width / 2, armdef.height / 2 - 150, xt, theta, display)
-    return df_filtered, target_thetas
+
+    # Iterate over the filtered dataframe to draw arm images.
+    for i in range(df_filtered.shape[0]):
+        xt = df_filtered.iloc[i].to_list()
+        print(f"xt: {xt}")
+        draw_arm(target_x, target_y, xt, target_thetas[i], display)
 
 
-def controlnet(x, y, theta, steps, model, display):
-    global xt_all_runs  # グローバル変数を参照
+# ----------------------------------------------------------
+# Compute control signals for a series of target thetas.
+# Returns a list of numpy arrays representing the history of xt.
+# ----------------------------------------------------------
+def controlnet(x, y, steps, model, target_thetas):
+    # Initialize xt with a random tensor.
     xt = torch.randn(armdef.arm.spring_joint_count * 2).cuda()
     first = True
-    steps_ = steps
-    xt_history = []  # xtの履歴を保存するリスト
+    current_steps = steps
+    xt_history = []  # Stores xt at each target theta
 
-    for i in reversed(range(1, steps_)):
+    for theta in target_thetas:
         model.eval()
         pos = torch.FloatTensor([[x, y]]).cuda()
         theta_tensor = torch.FloatTensor([[theta]]).cuda()
 
         if not first:
+            # Ensure xt is in float32 and normalized.
             xt = torch.tensor(xt, dtype=torch.float32).cuda()
             xt = normalize(xt)
+            # Add noise and perform one denoising step.
             noise = torch.randn_like(xt).cuda()
-            t = torch.FloatTensor([i]).long().cuda()
+            t = torch.tensor([current_steps - 1], dtype=torch.long).cuda()
             at_ = extract(t, xt.shape)
             xt_noised = torch.sqrt(at_) * xt + torch.sqrt(1 - at_) * noise
-            xt = model.denoise(xt_noised, i, pos, theta_tensor)
+            xt = model.denoise(xt_noised, current_steps, pos, theta_tensor)
             xt = denormalize(xt)
-            xt = xt.tolist()
         else:
-            for _ in range(4):
-                xt = torch.tensor(xt, dtype=torch.float32).cuda()
-                xt = normalize(xt)
-                noise = torch.randn_like(xt).cuda()
-                t = torch.FloatTensor([i]).long().cuda()
-                at_ = extract(t, xt.shape)
-                xt_noised = torch.sqrt(at_) * xt + torch.sqrt(1 - at_) * noise
-                xt = model.denoise(xt_noised, i, pos, theta_tensor)
-                xt = denormalize(xt)
-                xt = xt.tolist()
+            # For the first theta, use a different number of steps.
+            current_steps = 5
             first = False
-    xt_history.append(xt)  # step数分のxtの履歴を保存
-    return xt_history  # return each xt data
+
+        xt_history.append(xt)
+
+    # Convert each xt in the history to a numpy array.
+    xt_history_np = [entry.cpu().detach().numpy() for entry in xt_history]
+    return xt_history_np
 
 
-# dfとdf_filteredを引数に取り，プロットする関数を定義
+# ----------------------------------------------------------
+# Plot the original and filtered data side-by-side.
+# Original data is plotted in red and filtered data in blue.
+# ----------------------------------------------------------
 def plot_data(df, df_filtered):
-    num_signals = df.shape[1]
-    num_columns = 2
-    num_rows = (num_signals + num_columns - 1) // num_columns
-    fig, axes = plt.subplots(num_rows, num_columns, figsize=(15, 10))
-    axes = np.ravel(axes)
-
-    for i in range(num_signals):
-        ax = axes[i]
-        plot_signal(ax, df, df_filtered, i)
-
-    fig.suptitle("Original and filtered signals")
+    fig, axes = plt.subplots(6, 2, figsize=(10, 15))
+    for i in range(12):
+        ax = axes[i % 6, i // 6]
+        df[i].plot(ax=ax, title=f"input {i + 1}", color="red")
+        df_filtered[i].plot(ax=ax, title=f"filtered input {i + 1}", color="blue")
     plt.tight_layout()
     plt.show()
 
 
-def plot_signal(ax, df, df_filtered, signal_index):
-    x_df = df.index.to_numpy()
-    x_filtered_df = df_filtered.index.to_numpy()
-    y_df = df.iloc[:, signal_index].to_numpy()
-    y_filtered_df = df_filtered.iloc[:, signal_index].to_numpy()
-
-    ax.plot(x_df, y_df, label=f"Original signal {signal_index + 1}", color="blue")
-    ax.plot(
-        x_filtered_df,
-        y_filtered_df,
-        label=f"Filtered signal {signal_index + 1}",
-        color="red",
-    )
-    ax.set_xlabel("Time")
-    ax.set_ylabel("Signal value")
-    ax.set_title(f"Signal {signal_index + 1}")
-    ax.legend()
-
-
+# ----------------------------------------------------------
+# Draw the arm on the display based on the control signal xt.
+# ----------------------------------------------------------
 def draw_arm(x, y, xt, theta, display):
     armdef.arm.calc(xt)
     display.fill((255, 255, 255))
@@ -165,18 +148,36 @@ def draw_arm(x, y, xt, theta, display):
     )
     text2 = font.render(f"target: {theta / np.pi * 180} degree", True, (0, 0, 0))
     text3 = font.render(
-        f"error: {(armdef.arm.last.x[1] - theta) / np.pi * 180}", True, (0, 0, 0)
+        f"error: {abs(armdef.arm.last.x[1] - theta) / np.pi * 180}", True, (0, 0, 0)
     )
     display.blit(text1, (10, 10))
     display.blit(text2, (10, 40))
     display.blit(text3, (10, 70))
     pygame.draw.circle(display, (0, 0, 0), (int(x), int(y)), 10)
     pygame.display.update()
-    pygame.time.wait(100)
+    pygame.time.wait(10)
 
 
-def moving_average_filter(df, window_size=3):
+# ----------------------------------------------------------
+# Apply a moving-average filter along the rows of a DataFrame.
+# ----------------------------------------------------------
+def moving_average_filter(df, window_size=10):
     return df.rolling(window=window_size, min_periods=1, axis=0).mean()
+
+
+# ----------------------------------------------------------
+# Perform spline interpolation on the DataFrame columns.
+# Each of the first 12 columns is interpolated over n_points.
+# ----------------------------------------------------------
+def spline_interpolation(df, n_points=100):
+    df_interpolated = pd.DataFrame()
+    for i in range(12):
+        df_interpolated[i] = np.interp(
+            np.linspace(0, 1, n_points),
+            np.linspace(0, 1, df.shape[0]),
+            df[i],
+        )
+    return df_interpolated
 
 
 if __name__ == "__main__":
