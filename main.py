@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import pygame
 import torch
+import tqdm
 from pygame.locals import *
 
 from diffusion_model import Model, denormalize, extract, normalize, steps
@@ -28,7 +29,7 @@ def move(path, while_sleep_time=0):
     xt_list = []
 
     # 全ての xt を保存
-    for x, y in path:
+    for x, y in tqdm.tqdm(path):
         model.eval()
         pos = torch.FloatTensor([x, y]).cuda()
 
@@ -51,8 +52,10 @@ def move(path, while_sleep_time=0):
     df = pd.DataFrame(xt_array)
     smoothed_df = moving_average_filter(df, window_size=10)
     smoothed_xt_list = smoothed_df.values.tolist()
+    # プロットを実行
+    plot_data(df, smoothed_df)
     # xt_list の計算を行ってその後、ローパスフィルタを適用
-    for smoothed_xt in smoothed_xt_list:
+    for smoothed_xt in tqdm.tqdm(smoothed_xt_list):
         armdef.arm.calc(smoothed_xt)
         display.fill((255, 255, 255))
         for px, py in path:
@@ -60,8 +63,7 @@ def move(path, while_sleep_time=0):
         armdef.arm.draw(display)
         pygame.display.update()
         time.sleep(while_sleep_time)
-    # プロットを実行
-    plot_data(df, smoothed_df)
+
     pygame.quit()
 
 
@@ -78,7 +80,7 @@ def draw_cirtcle():
     # 円の軌道を描くための座標を格納するリストlに座標を追加
     circle = np.arange(0, 360, 0.1)
     circle = np.round(circle, 1)
-    for i in range(len(circle)):
+    for i in tqdm.tqdm(range(len(circle))):
         x = r * np.cos(np.radians(i)) + x0
         y = r * np.sin(np.radians(i)) + y0
         path_coords.append((x, y))
@@ -128,18 +130,18 @@ def moving_average_filter(df, window_size=10):
     return df.rolling(window=window_size, min_periods=1).mean()
 
 
-# 平滑化処理を行う関数を定義
-def apply_smoothing(target_pos, alpha=0.001):
-    xt_transpose = torch.stack(target_pos).transpose(0, 1).cpu().detach()
+# # 平滑化処理を行う関数を定義
+# def apply_smoothing(target_pos, alpha=0.001):
+#     xt_transpose = torch.stack(target_pos).transpose(0, 1).cpu().detach()
 
-    def smoothing(one_axis_list):
-        smoothed = [one_axis_list[0]]
-        for i in range(1, len(one_axis_list)):
-            smoothed.append(one_axis_list[i] * alpha + smoothed[i - 1] * (1 - alpha))
-        return smoothed
+#     def smoothing(one_axis_list):
+#         smoothed = [one_axis_list[0]]
+#         for i in range(1, len(one_axis_list)):
+#             smoothed.append(one_axis_list[i] * alpha + smoothed[i - 1] * (1 - alpha))
+#         return smoothed
 
-    smoothed_axes = [smoothing(one_axis) for one_axis in xt_transpose.numpy()]
-    return np.array(smoothed_axes).T.tolist()
+#     smoothed_axes = [smoothing(one_axis) for one_axis in xt_transpose.numpy()]
+#     return np.array(smoothed_axes).T.tolist()
 
 
 # low_pass_filteredを入力信号として、手先位置を計算する関数を定義
