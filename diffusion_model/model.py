@@ -219,7 +219,7 @@ class ControlNet(nn.Module):
 
 start_beta = 1e-4
 end_beta = 0.02
-denoise_steps = 20
+denoise_steps = 15
 n = 1024
 
 

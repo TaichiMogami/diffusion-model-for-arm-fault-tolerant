@@ -48,7 +48,10 @@ def generate_control_signals(target_x, target_y, model):
     display = pygame.display.set_mode((armdef.width, armdef.height))
 
     # Build the list of target theta values.
-    target_thetas = [(3.14 / 2) * (i / 50) for i in tqdm.tqdm(range(-75, 75))]
+    target_thetas = [(3.14 / 2) * (i / 50) for i in tqdm.tqdm(range(-50, 50))]
+    target_thetas = target_thetas + target_thetas[::-1]
+    target_thetas *= 4
+    print(f"target thetas length: {len(target_thetas)}")
 
     # Compute control signals for all target thetas.
     xt_all_runs = controlnet(target_x, target_y, denoise_steps, model, target_thetas)
@@ -63,10 +66,10 @@ def generate_control_signals(target_x, target_y, model):
     df = pd.DataFrame(xt_all_runs_reshaped)
 
     # Apply a moving average filter.
-    df_filtered = df
+    df_filtered = moving_average_filter(df)
 
     # Plot both original and filtered data.
-    plot_data(df, df_filtered)
+    # plot_data(df, df_filtered)
 
     # Iterate over the filtered dataframe to draw arm images.
     for i in range(df_filtered.shape[0]):
@@ -104,7 +107,7 @@ def controlnet(x, y, steps, model, target_thetas):
             xt = denormalize(xt)
         else:
             # For the first theta, use a different number of steps.
-            current_steps = 5
+            current_steps = 4
             first = False
 
         xt_history.append(xt)
@@ -148,20 +151,22 @@ def draw_arm(x, y, xt, theta, display):
     )
     text2 = font.render(f"target: {theta / np.pi * 180} degree", True, (0, 0, 0))
     text3 = font.render(
-        f"error: {abs(armdef.arm.last.x[1] - theta) / np.pi * 180}", True, (0, 0, 0)
+        f"error: {abs(armdef.arm.last.x[1] - theta) / np.pi * 180} degree",
+        True,
+        (0, 0, 0),
     )
     display.blit(text1, (10, 10))
     display.blit(text2, (10, 40))
     display.blit(text3, (10, 70))
     pygame.draw.circle(display, (0, 0, 0), (int(x), int(y)), 10)
     pygame.display.update()
-    pygame.time.wait(10)
+    pygame.time.wait(50)
 
 
 # ----------------------------------------------------------
 # Apply a moving-average filter along the rows of a DataFrame.
 # ----------------------------------------------------------
-def moving_average_filter(df, window_size=10):
+def moving_average_filter(df, window_size=3):
     return df.rolling(window=window_size, min_periods=1, axis=0).mean()
 
 
