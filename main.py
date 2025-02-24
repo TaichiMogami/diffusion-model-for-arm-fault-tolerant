@@ -27,7 +27,8 @@ def move(path, while_sleep_time=0):
     first = True
     steps_ = steps
     xt_list = []
-
+    pos_list = []
+    end_effector_positions = []
     # 全ての xt を保存
     for x, y in tqdm.tqdm(path):
         model.eval()
@@ -46,25 +47,50 @@ def move(path, while_sleep_time=0):
             first = False
 
         xt_list.append(denormalize(xt).cpu().detach().numpy())
+        pos_list.append(pos.cpu().detach().numpy())
 
+    df_target_pos = pd.DataFrame(pos_list, columns=["x", "y"])
+    print(f"df_pos_shape: {df_target_pos.shape}")
     # 移動平均を適用
     xt_array = np.array(xt_list)
     df = pd.DataFrame(xt_array)
-    smoothed_df = moving_average_filter(df, window_size=10)
+    smoothed_df = moving_average_filter(df, window_size=30)
     smoothed_xt_list = smoothed_df.values.tolist()
     # プロットを実行
-    plot_data(df, smoothed_df)
+    # plot_data(df, smoothed_df)
     # xt_list の計算を行ってその後、ローパスフィルタを適用
     for smoothed_xt in tqdm.tqdm(smoothed_xt_list):
         armdef.arm.calc(smoothed_xt)
+        end_effector = armdef.arm.last.x[0]
+        end_effector_positions.append(end_effector)
         display.fill((255, 255, 255))
         for px, py in path:
             display.set_at((int(px), int(py)), (0, 0, 0))
         armdef.arm.draw(display)
         pygame.display.update()
         time.sleep(while_sleep_time)
-
+    df_end_effector = pd.DataFrame(end_effector_positions, columns=["x", "y"])
+    print(f"df_end_effector_shape: {df_end_effector.shape}")
+    plot_target_and_end_effector(df_target_pos, df_end_effector)
     pygame.quit()
+
+
+# main関数内のdf_target_posとdf_end_effectorを同じグラフにプロットし，比較する関数を定義
+def plot_target_and_end_effector(df_target_pos, df_end_effector):
+    fig, ax = plt.subplots(1, 1, figsize=(15, 10))
+    ax.plot(
+        df_target_pos["x"], df_target_pos["y"], label="Target Position", color="blue"
+    )
+    ax.plot(
+        df_end_effector["x"],
+        df_end_effector["y"],
+        label="End Effector Position",
+        color="red",
+    )
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.legend()
+    plt.show()
 
 
 # 円の軌道を描かせる
@@ -79,7 +105,6 @@ def draw_cirtcle():
     r = 150
     # 円の軌道を描くための座標を格納するリストlに座標を追加
     circle = np.arange(0, 360, 0.1)
-    circle = np.round(circle, 1)
     for i in tqdm.tqdm(range(len(circle))):
         x = r * np.cos(np.radians(i)) + x0
         y = r * np.sin(np.radians(i)) + y0
@@ -144,19 +169,19 @@ def moving_average_filter(df, window_size=10):
 #     return np.array(smoothed_axes).T.tolist()
 
 
-# low_pass_filteredを入力信号として、手先位置を計算する関数を定義
-def calculate_end_effector_position(low_pass_filtered):
-    # ロボットアームの手先位置を格納するリストを設定
-    end_effector_positions = []
-    # low_pass_filteredの要素をタプルからリストに変換
-    low_pass_filtered = [list(xt) for xt in low_pass_filtered]
-    # ロボットアームの手先位置を計算
-    print("low_pass_filtered:", low_pass_filtered)
-    for xt in low_pass_filtered:
-        armdef.arm.calc(xt)
-        end_effector_positions.append(copy.deepcopy(armdef.arm.end_effector))
-    print("end_effector_positions:", end_effector_positions)
-    return end_effector_positions
+# # low_pass_filteredを入力信号として、手先位置を計算する関数を定義
+# def calculate_end_effector_position(low_pass_filtered):
+#     # ロボットアームの手先位置を格納するリストを設定
+#     end_effector_positions = []
+#     # low_pass_filteredの要素をタプルからリストに変換
+#     low_pass_filtered = [list(xt) for xt in low_pass_filtered]
+#     # ロボットアームの手先位置を計算
+#     print("low_pass_filtered:", low_pass_filtered)
+#     for xt in low_pass_filtered:
+#         armdef.arm.calc(xt)
+#         end_effector_positions.append(copy.deepcopy(armdef.arm.end_effector))
+#     print("end_effector_positions:", end_effector_positions)
+#     return end_effector_positions
 
 
 def write_csv(data, filename):
