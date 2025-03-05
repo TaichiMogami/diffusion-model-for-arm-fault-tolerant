@@ -50,7 +50,7 @@ def move(path, while_sleep_time=0):
         pos_list.append(pos.cpu().detach().numpy())
 
     df_target_pos = pd.DataFrame(pos_list, columns=["x", "y"])
-    print(f"df_pos_shape: {df_target_pos.shape}")
+    # print(f"df_pos_shape: {df_target_pos.shape}")
     # 移動平均を適用
     xt_array = np.array(xt_list)
     df = pd.DataFrame(xt_array)
@@ -59,37 +59,69 @@ def move(path, while_sleep_time=0):
     # プロットを実行
     # plot_data(df, smoothed_df)
     # xt_list の計算を行ってその後、ローパスフィルタを適用
+
     for smoothed_xt in tqdm.tqdm(smoothed_xt_list):
         armdef.arm.calc(smoothed_xt)
+        display.fill((255, 255, 255))
         end_effector = armdef.arm.last.x[0]
         end_effector_positions.append(end_effector)
-        display.fill((255, 255, 255))
-        for px, py in path:
-            display.set_at((int(px), int(py)), (0, 0, 0))
+        pygame.draw.lines(display, (0, 0, 0), False, path, 10)
         armdef.arm.draw(display)
+
         pygame.display.update()
         time.sleep(while_sleep_time)
     df_end_effector = pd.DataFrame(end_effector_positions, columns=["x", "y"])
     print(f"df_end_effector_shape: {df_end_effector.shape}")
-    plot_target_and_end_effector(df_target_pos, df_end_effector)
+    # plot_target_and_end_effector(df_target_pos, df_end_effector)
     pygame.quit()
 
 
-# main関数内のdf_target_posとdf_end_effectorを同じグラフにプロットし，比較する関数を定義
 def plot_target_and_end_effector(df_target_pos, df_end_effector):
-    fig, ax = plt.subplots(1, 1, figsize=(15, 10))
+    target_pos_center = df_target_pos - df_target_pos.mean() + 200
+    end_effector_center = df_end_effector - df_end_effector.mean() + 200
+
+    fig, ax = plt.subplots(1, 1, figsize=(12, 12))
     ax.plot(
-        df_target_pos["x"], df_target_pos["y"], label="Target Position", color="blue"
+        target_pos_center["x"],
+        target_pos_center["y"],
+        label="Target Position",
+        color="blue",
     )
     ax.plot(
-        df_end_effector["x"],
-        df_end_effector["y"],
+        end_effector_center["x"],
+        end_effector_center["y"],
         label="End Effector Position",
         color="red",
     )
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.legend()
+
+    # # 軸の位置調整
+    # ax.spines["left"].set_position("zero")
+    # ax.spines["bottom"].set_position("zero")
+
+    # **すべての枠線を太くする**
+    for spine in ax.spines.values():
+        spine.set_linewidth(3)  # 太さを 2px に設定
+
+    # # **x=-200, y=-200 の線も強調**
+    # ax.axhline(y=-200, color="black", linewidth=2)  # y=-200 の線を追加
+    # ax.axvline(x=-200, color="black", linewidth=2)  # x=-200 の線を追加
+
+    # グリッドの設定
+    ax.grid(color="gray", linestyle="--", linewidth=1.0)
+
+    # 目盛りの設定
+    ax.set_xticks([0, 50, 100, 150, 200, 250, 300, 350, 400])
+    ax.set_yticks([0, 50, 100, 150, 200, 250, 300, 350, 400])  # 目盛りの位置を設定
+    plt.tick_params(labelsize=30)
+
+    # 軸の範囲と比率を設定
+    ax.set_xlim(0, 400)
+    ax.set_ylim(0, 400)
+    ax.set_aspect("equal")
+
+    ax.set_xlabel("X", fontsize=30)
+    ax.set_ylabel("Y", fontsize=30)
+
     plt.show()
 
 
@@ -109,6 +141,7 @@ def draw_cirtcle():
         x = r * np.cos(np.radians(i)) + x0
         y = r * np.sin(np.radians(i)) + y0
         path_coords.append((x, y))
+    print("path_coords:", path_coords)
     move(path_coords, while_sleep_time=0.001)
 
 
