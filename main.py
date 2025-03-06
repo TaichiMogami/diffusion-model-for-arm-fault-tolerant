@@ -60,26 +60,31 @@ def move(path, while_sleep_time=0):
     # plot_data(df, smoothed_df)
     # xt_list の計算を行ってその後、ローパスフィルタを適用
 
-    for smoothed_xt in enumerate(tqdm.tqdm(smoothed_xt_list)):
-        armdef.arm.calc(smoothed_xt[1])
-        display.fill((255, 255, 255))
+    directory = "output_data"
+    os.makedirs(directory, exist_ok=True)
+
+    for index, smoothed_xt in enumerate(tqdm.tqdm(smoothed_xt_list)):
+        armdef.arm.calc(smoothed_xt)
         end_effector = armdef.arm.last.x[0]
         end_effector_positions.append(end_effector)
-        pygame.draw.lines(display, (0, 0, 0), False, path, 10)
-        # smoothed_xtのインデックスを取得
-        index = smoothed_xt[0]
         print(f"index: {index}")
-        if index % 300 == 0:
+        if index % 45 == 0 and index != 0:
+            display.fill((255, 255, 255))
+            pygame.draw.lines(display, (0, 0, 0), False, path, 10)
             armdef.arm.draw(display)
-            # 描画した画像を保存
-            save_fig = f"filtered_data/{index}.png"
-            pygame.image.save(display, save_fig)
-        pygame.display.update()
-        time.sleep(while_sleep_time)
+            # 画像を保存
+            file_path = f"{directory}/output_frame_{index}.png"
+            save_image(display, file_path)
+            pygame.image.save(display, file_path)
+            pygame.display.update()
     df_end_effector = pd.DataFrame(end_effector_positions, columns=["x", "y"])
     # print(f"df_end_effector_shape: {df_end_effector.shape}")
     plot_target_and_end_effector(df_target_pos, df_end_effector)
     pygame.quit()
+
+
+def save_image(display, filename):
+    pygame.image.save(display, filename)
 
 
 def plot_target_and_end_effector(df_target_pos, df_end_effector):
@@ -142,7 +147,7 @@ def draw_cirtcle():
     # 円の半径を150に設定
     r = 150
     # 円の軌道を描くための座標を格納するリストlに座標を追加
-    circle = np.arange(0, 360, 0.25)
+    circle = np.arange(0, 1080, 1)
     for i in tqdm.tqdm(range(len(circle))):
         x = r * np.cos(np.radians(i)) + x0
         y = r * np.sin(np.radians(i)) + y0

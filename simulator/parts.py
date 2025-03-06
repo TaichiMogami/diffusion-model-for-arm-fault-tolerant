@@ -34,7 +34,7 @@ class Part:
 
     # 描画
     # display: 画面, colorのデフォルト値は(0, 0, 0)でRGB値を表す
-    def draw(self, display, color=(0, 0, 0)):
+    def draw(self, display, color=(255, 0, 0)):
         # drawpartメソッドを呼び出し、その結果をdisplayとcolorに代入
         self.draw_part(display, color)
         # 現在のオブジェクトが最後のオブジェクトでない場合、次のオブジェクトのdrawメソッドを呼び出す
