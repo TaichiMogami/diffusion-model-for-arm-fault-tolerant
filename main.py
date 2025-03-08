@@ -101,23 +101,23 @@ def generate_control_signals(target_x, target_y, model):
     # plot_data(df, df_filtered)
     
    # 既存の出力ファイルを取得
-    existing_files = {f"output_frame_{i}.png" for i in range(15, 200, 40)}
+    existing_files = {f"output_frame_{i}.png" for i in range(5, 400, 40)}
 
     for i in range(df_filtered.shape[0]):
-        if i in range(15, 200, 40):
+        if i in range(5, 400, 40):
             display.fill((255, 255, 255))  # 背景を白にリセット
             xt = df_filtered.iloc[i].to_list()
             print(f"xt: {xt}")
 
-            draw_arm(target_x, target_y, xt, target_thetas[i], display, (0, 0, 255, int((i / 200) * 255)))
+            draw_arm(target_x, target_y, xt, target_thetas[i], display, (0, 0, 255, int((i / 400) * 255)))
             save_image(display, f"output_frame_{i}.png")  # 画像を保存
 
-    # # 不要なPNGファイルを削除
-    # for file in os.listdir():
-    #     if file.startswith("output_frame_") and file.endswith(".png"):
-    #         if file not in existing_files:
-    #             os.remove(file)
-    #             print(f"Deleted: {file}")
+    # 不要なPNGファイルを削除
+    for file in os.listdir():
+        if file.startswith("output_frame_") and file.endswith(".png"):
+            if file not in existing_files:
+                os.remove(file)
+                print(f"Deleted: {file}")
 
 
 # ----------------------------------------------------------
