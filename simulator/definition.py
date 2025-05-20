@@ -1,4 +1,4 @@
-from .parts import Base
+from simulator.parts import Base
 
 # 画面の大きさ
 width = 1280

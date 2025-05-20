@@ -68,15 +68,18 @@ def move(path, while_sleep_time=0):
         end_effector = armdef.arm.last.x[0]
         end_effector_positions.append(end_effector)
         print(f"index: {index}")
-        if index % 45 == 0 and index != 0:
-            display.fill((255, 255, 255))
-            pygame.draw.lines(display, (0, 0, 0), False, path, 10)
-            armdef.arm.draw(display)
-            # 画像を保存
-            file_path = f"{directory}/output_frame_{index}.png"
-            save_image(display, file_path)
-            pygame.image.save(display, file_path)
-            pygame.display.update()
+        # if index % 45 == 0 and index != 0:
+        #     display.fill((255, 255, 255))
+        #     pygame.draw.lines(display, (0, 0, 0), False, path, 10)
+        #     armdef.arm.draw(display)
+        #     # 画像を保存
+        #     file_path = f"{directory}/output_frame_{index}.png"
+        #     save_image(display, file_path)
+        #     pygame.image.save(display, file_path)
+        #     pygame.display.update()
+    print(f"smoothed_df:\n{smoothed_df}")
+
+    # print("end_effector_positions:", end_effector_positions)
     df_end_effector = pd.DataFrame(end_effector_positions, columns=["x", "y"])
     # print(f"df_end_effector_shape: {df_end_effector.shape}")
     plot_target_and_end_effector(df_target_pos, df_end_effector)
@@ -88,51 +91,51 @@ def save_image(display, filename):
 
 
 def plot_target_and_end_effector(df_target_pos, df_end_effector):
+    import pandas as pd
+
+    # --- ① Seriesだった場合にDataFrame化する ---
+    if isinstance(df_target_pos, pd.Series):
+        df_target_pos = df_target_pos.to_frame().T  # 列に変換し行に整形
+    if isinstance(df_end_effector, pd.Series):
+        df_end_effector = df_end_effector.to_frame().T
+
+    # --- ② 必要な列を明示的に抽出（xとy） ---
+    df_target_pos = df_target_pos[["x", "y"]]
+    df_end_effector = df_end_effector[["x", "y"]]
+
+    # --- ③ 中心化処理 ---
     target_pos_center = df_target_pos - df_target_pos.mean() + 200
     end_effector_center = df_end_effector - df_end_effector.mean() + 200
 
+    # --- ④ プロット処理 ---
+    import matplotlib.pyplot as plt
+
     fig, ax = plt.subplots(1, 1, figsize=(12, 12))
     ax.plot(
-        target_pos_center["x"],
-        target_pos_center["y"],
+        target_pos_center["x"].values,
+        target_pos_center["y"].values,
         label="Target Position",
         color="blue",
     )
     ax.plot(
-        end_effector_center["x"],
-        end_effector_center["y"],
+        end_effector_center["x"].values,
+        end_effector_center["y"].values,
         label="End Effector Position",
         color="red",
     )
 
-    # # 軸の位置調整
-    # ax.spines["left"].set_position("zero")
-    # ax.spines["bottom"].set_position("zero")
-
-    # **すべての枠線を太くする**
     for spine in ax.spines.values():
-        spine.set_linewidth(3)  # 太さを 2px に設定
+        spine.set_linewidth(3)
 
-    # # **x=-200, y=-200 の線も強調**
-    # ax.axhline(y=-200, color="black", linewidth=2)  # y=-200 の線を追加
-    # ax.axvline(x=-200, color="black", linewidth=2)  # x=-200 の線を追加
-
-    # グリッドの設定
     ax.grid(color="gray", linestyle="--", linewidth=1.0)
-
-    # 目盛りの設定
     ax.set_xticks([0, 50, 100, 150, 200, 250, 300, 350, 400])
-    ax.set_yticks([0, 50, 100, 150, 200, 250, 300, 350, 400])  # 目盛りの位置を設定
+    ax.set_yticks([0, 50, 100, 150, 200, 250, 300, 350, 400])
     plt.tick_params(labelsize=30)
-
-    # 軸の範囲と比率を設定
     ax.set_xlim(0, 400)
     ax.set_ylim(0, 400)
     ax.set_aspect("equal")
-
     ax.set_xlabel("X", fontsize=30)
     ax.set_ylabel("Y", fontsize=30)
-
     plt.show()
 
 
@@ -147,7 +150,7 @@ def draw_cirtcle():
     # 円の半径を150に設定
     r = 150
     # 円の軌道を描くための座標を格納するリストlに座標を追加
-    circle = np.arange(0, 1080, 1)
+    circle = np.arange(0, 3240, 1)
     for i in tqdm.tqdm(range(len(circle))):
         x = r * np.cos(np.radians(i)) + x0
         y = r * np.sin(np.radians(i)) + y0
