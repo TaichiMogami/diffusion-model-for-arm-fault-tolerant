@@ -13,8 +13,8 @@ def gen_data(x, y):
     # fixed = {4: 0, 5: 30}
     input_, x_, y_, theta = yamanobori(armdef.arm, x, y, 100)
     # 特定次元のデータを固定
-    input_[4] = 0
-    input_[5] = 30
+    # input_[4] = 0
+    # input_[5] = 30
     # データフレームにデータを追加
     df = pd.DataFrame([input_])
     # データフレームにデータを追加

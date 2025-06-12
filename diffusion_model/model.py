@@ -16,8 +16,8 @@ class Model(nn.Module):
         # 入力データに位置情報を付与し、入力データに各要素の順序を反映させる
         self.pe = PositionalEncoding(steps, self.d)
         # エンコーダーとデコーダーを定義
-        self.encoder = FC(self.d)
-        self.decoder = FC(self.d)
+        self.encoder = Encoder(self.d)
+        self.decoder = Decoder(self.d)
         # 全結合層を定義
         self.pos_fc = nn.Linear(2, self.d)
 
@@ -151,44 +151,68 @@ class PositionalEncoding(torch.nn.Module):
 
     # 順伝播処理を行う関数を定義
     def forward(self, x, step):
-        # テンソルstepの形状をexpandメソッドを使用して、self.d×1の形状に変換し、転置
         step = step.expand(self.d, -1).T
-        # テンソルpeの0次元に沿って値を抽出し、pe_に代入
-        # stepテンソルをcpuに移動し、そのインデックスを使用して、self.peから値を抽出
         pe_ = torch.gather(self.pe, 0, step.cpu()).to(x.device)
-        # テンソルxを√d倍して、pe_を加算
         x = x * math.sqrt(self.d) + pe_
         return x
 
 
-class FC(nn.Module):
+class Encoder(nn.Module):
     def __init__(self, middle_d: int = 1024, steps: int = 25):
         super().__init__()
-        self.time_embed = PositionalEncoding(steps=steps, d=middle_d)
-        self.layers = nn.Sequential(
-            nn.Linear(middle_d, middle_d),
-            nn.LayerNorm(middle_d),
-            nn.ReLU(),
-            nn.Dropout(p=0.2),
-            nn.Linear(middle_d, middle_d),
-            nn.LayerNorm(middle_d),
-            nn.ReLU(),
-            nn.Dropout(p=0.2),
-            nn.Linear(middle_d, middle_d),
-            nn.LayerNorm(middle_d),
-            nn.ReLU(),
-            nn.Dropout(p=0.2),
-            nn.Linear(middle_d, middle_d),
-            nn.LayerNorm(middle_d),
-            nn.ReLU(),
-            nn.Dropout(p=0.2),
-            nn.Linear(middle_d, middle_d),
-        )
+        self.relu1 = nn.ReLU()
+        self.fc1 = nn.Linear(middle_d, middle_d)
+        self.bn1 = nn.BatchNorm1d(middle_d)
+        self.fc2 = nn.Linear(middle_d, middle_d)
+        self.bn2 = nn.BatchNorm1d(middle_d)
+        self.relu2 = nn.ReLU()
+        self.fc3 = nn.Linear(middle_d, middle_d)
+        self.bn3 = nn.BatchNorm1d(middle_d)
+        self.relu3 = nn.ReLU()
+        self.fc4 = nn.Linear(middle_d, middle_d)
 
     # 順伝播処理を行う関数を定義
     def forward(self, x: torch.Tensor, t: torch.Tensor):
-        x = self.time_embed(x, t.unsqueeze(1))
-        return self.layers(x)
+        x = self.fc1(x)
+        x = self.bn1(x)
+        x = self.relu1(x)
+        x = self.fc2(x)
+        x = self.bn2(x)
+        x = self.relu2(x)
+        x = self.fc3(x)
+        x = self.bn3(x)
+        x = self.relu3(x)
+        x = self.fc4(x)
+        return x
+
+
+class Decoder(nn.Module):
+    def __init__(self, middle_d: int = 1024, steps: int = 25):
+        super().__init__()
+        self.relu1 = nn.ReLU()
+        self.fc1 = nn.Linear(middle_d, middle_d)
+        self.bn1 = nn.BatchNorm1d(middle_d)
+        self.fc2 = nn.Linear(middle_d, middle_d)
+        self.bn2 = nn.BatchNorm1d(middle_d)
+        self.relu2 = nn.ReLU()
+        self.fc3 = nn.Linear(middle_d, middle_d)
+        self.bn3 = nn.BatchNorm1d(middle_d)
+        self.relu3 = nn.ReLU()
+        self.fc4 = nn.Linear(middle_d, middle_d)
+
+    # 順伝播処理を行う関数を定義
+    def forward(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        x = self.fc1(x)
+        x = self.bn1(x)
+        x = self.relu1(x)
+        x = self.fc2(x)
+        x = self.bn2(x)
+        x = self.relu2(x)
+        x = self.fc3(x)
+        x = self.bn3(x)
+        x = self.relu3(x)
+        x = self.fc4(x)
+        return x
 
 
 def extract(t, x_shape):

@@ -65,18 +65,14 @@ def move(path, while_sleep_time=0):
 
     for index, smoothed_xt in enumerate(tqdm.tqdm(smoothed_xt_list)):
         armdef.arm.calc(smoothed_xt)
-        end_effector = armdef.arm.last.x[0]
+        end_effector = armdef.arm.last.x[0][0], armdef.arm.last.x[0][1]
+        print(f"smoothed_xt: {smoothed_xt}, end_effector: {end_effector}")
         end_effector_positions.append(end_effector)
-        print(f"index: {index}")
-        # if index % 45 == 0 and index != 0:
-        #     display.fill((255, 255, 255))
-        #     pygame.draw.lines(display, (0, 0, 0), False, path, 10)
-        #     armdef.arm.draw(display)
-        #     # 画像を保存
-        #     file_path = f"{directory}/output_frame_{index}.png"
-        #     save_image(display, file_path)
-        #     pygame.image.save(display, file_path)
-        #     pygame.display.update()
+        display.fill((255, 255, 255))
+        pygame.draw.lines(display, (0, 0, 0), False, path, 10)
+        armdef.arm.draw(display)
+        pygame.display.update()
+        time.sleep(0.01)
     print(f"smoothed_df:\n{smoothed_df}")
 
     # print("end_effector_positions:", end_effector_positions)

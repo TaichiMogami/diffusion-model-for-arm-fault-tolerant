@@ -1,7 +1,7 @@
 import copy
 
 import numpy as np
-# import pygame
+import pygame
 
 # シミュレーションで使うアームのパーツの実装
 
@@ -105,16 +105,16 @@ class SpringJoint(Part):
         return [self.pre.x[0], theta]
 
     # 描画する関数を定義
-    # def draw_part(self, display, color):
-    #     # pygame.draw.circleメソッドを使用して、円を描画
-    #     pygame.draw.circle(
-    #         # 円の中心座標をx[0][0], x[0][1]に設定、半径をr(10)に設定
-    #         display,
-    #         color,
-    #         (self.x[0][0], self.x[0][1]),
-    #         self.r,
-    #         5,
-    #     )
+    def draw_part(self, display, color):
+        # pygame.draw.circleメソッドを使用して、円を描画
+        pygame.draw.circle(
+            # 円の中心座標をx[0][0], x[0][1]に設定、半径をr(10)に設定
+            display,
+            color,
+            (self.x[0][0], self.x[0][1]),
+            self.r,
+            5,
+        )
 
     # シミュレーターの角度を計算する関数を定義
     # (u2-u1)/2r + φ(一つ上のジョイントと球体の間の角度) を返す
@@ -148,16 +148,16 @@ class Bone(Part):
         # xとthetaをリスト形式で返す
         return [x, theta]
 
-    # # 描画する関数を定義
-    # def draw_part(self, display, color):
-    #     # 一つ上のxから、次のxまでの直線を描画
-    #     pygame.draw.line(
-    #         display,
-    #         color,
-    #         (self.pre.x[0][0], self.pre.x[0][1]),
-    #         (self.x[0][0], self.x[0][1]),
-    #         5,
-    #     )
+    # 描画する関数を定義
+    def draw_part(self, display, color):
+        # 一つ上のxから、次のxまでの直線を描画
+        pygame.draw.line(
+            display,
+            color,
+            (self.pre.x[0][0], self.pre.x[0][1]),
+            (self.x[0][0], self.x[0][1]),
+            5,
+        )
 
 
 # class PrintEndEffecta(Part):
