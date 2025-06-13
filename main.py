@@ -23,6 +23,8 @@ def move(path, while_sleep_time=0):
     display = pygame.display.set_mode((armdef.width, armdef.height))
     model = Model(steps).cuda()
     model.load_state_dict(torch.load("data/model.pth"))
+    torch.cuda.manual_seed(42)
+    torch.cuda.manual_seed_all(42)  # 複数GPUがある場合
     xt = torch.randn(armdef.arm.spring_joint_count * 2).cuda()
     first = True
     steps_ = steps
@@ -31,9 +33,13 @@ def move(path, while_sleep_time=0):
     end_effector_positions = []
     # 全ての xt を保存
     for x, y in tqdm.tqdm(path):
+        # 推論の実行
         model.eval()
         pos = torch.FloatTensor([x, y]).cuda()
-
+        xt[4] = 0.0  # 特定次元のデータを固定
+        xt[5] = 30.0
+        # xt[10] = 0.0
+        # xt[11] = 30.0
         if not first:
             xt_normalize = normalize(xt)
             noise = torch.randn_like(xt_normalize).cuda()
@@ -42,6 +48,7 @@ def move(path, while_sleep_time=0):
             xt_noised = torch.sqrt(at_) * xt_normalize + torch.sqrt(1 - at_) * noise
             xt = model.denoise(xt_noised, steps_, pos)
         else:
+            # xt = torch.randn(armdef.arm.spring_joint_count * 2).cuda()
             xt = model.denoise(xt, steps_, pos)
             steps_ = 4
             first = False
@@ -50,6 +57,8 @@ def move(path, while_sleep_time=0):
         pos_list.append(pos.cpu().detach().numpy())
 
     df_target_pos = pd.DataFrame(pos_list, columns=["x", "y"])
+    print(f"df_target_pos: {df_target_pos}")
+    print(f"df_target_pos_shape: {df_target_pos.shape}")
     # print(f"df_pos_shape: {df_target_pos.shape}")
     # 移動平均を適用
     xt_array = np.array(xt_list)
@@ -65,7 +74,7 @@ def move(path, while_sleep_time=0):
 
     for index, smoothed_xt in enumerate(tqdm.tqdm(smoothed_xt_list)):
         armdef.arm.calc(smoothed_xt)
-        end_effector = armdef.arm.last.x[0][0], armdef.arm.last.x[0][1]
+        end_effector = -armdef.arm.last.x[0][0], -armdef.arm.last.x[0][1]
         print(f"smoothed_xt: {smoothed_xt}, end_effector: {end_effector}")
         end_effector_positions.append(end_effector)
         display.fill((255, 255, 255))
@@ -146,7 +155,7 @@ def draw_cirtcle():
     # 円の半径を150に設定
     r = 150
     # 円の軌道を描くための座標を格納するリストlに座標を追加
-    circle = np.arange(0, 3240, 1)
+    circle = np.arange(0, 3600, 1)
     for i in tqdm.tqdm(range(len(circle))):
         x = r * np.cos(np.radians(i)) + x0
         y = r * np.sin(np.radians(i)) + y0
