@@ -32,14 +32,12 @@ def move(path, while_sleep_time=0):
     pos_list = []
     end_effector_positions = []
     # 全ての xt を保存
-    for x, y in tqdm.tqdm(path):
+    for x, y in path:
         # 推論の実行
         model.eval()
         pos = torch.FloatTensor([x, y]).cuda()
         xt[4] = 0.0  # 特定次元のデータを固定
         xt[5] = 30.0
-        # xt[10] = 0.0
-        # xt[11] = 30.0
         if not first:
             xt_normalize = normalize(xt)
             noise = torch.randn_like(xt_normalize).cuda()
@@ -50,15 +48,15 @@ def move(path, while_sleep_time=0):
         else:
             # xt = torch.randn(armdef.arm.spring_joint_count * 2).cuda()
             xt = model.denoise(xt, steps_, pos)
-            steps_ = 4
+            steps_ = 10
             first = False
 
         xt_list.append(denormalize(xt).cpu().detach().numpy())
         pos_list.append(pos.cpu().detach().numpy())
 
     df_target_pos = pd.DataFrame(pos_list, columns=["x", "y"])
-    print(f"df_target_pos: {df_target_pos}")
-    print(f"df_target_pos_shape: {df_target_pos.shape}")
+    # print(f"df_target_pos: {df_target_pos}")
+    # print(f"df_target_pos_shape: {df_target_pos.shape}")
     # print(f"df_pos_shape: {df_target_pos.shape}")
     # 移動平均を適用
     xt_array = np.array(xt_list)
@@ -72,17 +70,17 @@ def move(path, while_sleep_time=0):
     directory = "output_data"
     os.makedirs(directory, exist_ok=True)
 
-    for index, smoothed_xt in enumerate(tqdm.tqdm(smoothed_xt_list)):
+    for index, smoothed_xt in enumerate(smoothed_xt_list):
         armdef.arm.calc(smoothed_xt)
         end_effector = -armdef.arm.last.x[0][0], -armdef.arm.last.x[0][1]
-        print(f"smoothed_xt: {smoothed_xt}, end_effector: {end_effector}")
+        # print(f"smoothed_xt: {smoothed_xt}, end_effector: {end_effector}")
         end_effector_positions.append(end_effector)
         display.fill((255, 255, 255))
         pygame.draw.lines(display, (0, 0, 0), False, path, 10)
         armdef.arm.draw(display)
         pygame.display.update()
         time.sleep(0.01)
-    print(f"smoothed_df:\n{smoothed_df}")
+    # print(f"smoothed_df:\n{smoothed_df}")
 
     # print("end_effector_positions:", end_effector_positions)
     df_end_effector = pd.DataFrame(end_effector_positions, columns=["x", "y"])

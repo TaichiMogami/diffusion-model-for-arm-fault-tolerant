@@ -1,4 +1,5 @@
 import math
+import time
 
 import numpy as np
 import pandas as pd
@@ -48,8 +49,10 @@ class Model(nn.Module):
 
     # デノイズ処理を行う関数を定義
     def denoise(self, xt: torch.Tensor, steps: int, pos):
+        denoise_time_list = []
         # ノイズを加えたときとは逆方向にデノイズ処理を行う
         for i in reversed(range(1, steps)):
+            start = time.perf_counter()
             # テンソルの要素がiのテンソルを生成し、cudaメソッドを使用してGPUに転送
             step = torch.FloatTensor([i]).cuda()
             # Xtと同じサイズのテンソルを生成する
@@ -69,6 +72,11 @@ class Model(nn.Module):
                     xt - (beta[i] / torch.sqrt(1 - alpha_[i])) * self(xt_, step, pos)
                 ) + torch.sqrt((1 - alpha_[i - 1]) / (1 - alpha_[i]) * beta[i]) * z
             xt = xt.view(-1)
+            end = time.perf_counter()
+            denoise_time = end - start
+            denoise_time_list.append(denoise_time)
+        # デノイズ処理にかかった平均時間を計算
+        print(f"Denoise time: {np.mean(denoise_time_list)} seconds")
         return xt
 
 
