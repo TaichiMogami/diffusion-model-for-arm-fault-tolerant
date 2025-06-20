@@ -8,9 +8,9 @@ import pandas as pd
 import pygame
 import torch
 import tqdm
-from pygame.locals import *
 
 from diffusion_model import Model, denormalize, extract, normalize, steps
+from faults import FaultInjector
 from simulator import definition as armdef
 
 
@@ -31,13 +31,22 @@ def move(path, while_sleep_time=0):
     xt_list = []
     pos_list = []
     end_effector_positions = []
+    # 故障に関するインスタンスを生成
+    fault_injector = FaultInjector(device="cuda")
+    xt_buffer = []
     # 全ての xt を保存
-    for x, y in path:
+    for step, (x, y) in enumerate(path):
         # 推論の実行
         model.eval()
         pos = torch.FloatTensor([x, y]).cuda()
-        xt[4] = 0.0  # 特定次元のデータを固定
-        xt[5] = 30.0
+
+        xt = fault_injector.apply_lock_fault(xt, index=[10, 11], lock_values=[0, 30])
+        # xt = fault_injector.apply_noise_fault(xt, index=[0, 1, 2, 3], std_dev=1)
+        # xt = fault_injector.apply_dropout_fault(xt, index=[7, 8], dropout_prob=0.7)
+        # xt = fault_injector.apply_delay_fault(
+        #     xt, index=[6, 7, 8, 9, 10, 11], delay_steps=1000
+        # )
+
         if not first:
             xt_normalize = normalize(xt)
             noise = torch.randn_like(xt_normalize).cuda()
@@ -48,20 +57,22 @@ def move(path, while_sleep_time=0):
         else:
             # xt = torch.randn(armdef.arm.spring_joint_count * 2).cuda()
             xt = model.denoise(xt, steps_, pos)
-            steps_ = 10
+            steps_ = 8
             first = False
-
+        # prev_xt = xt.clone()
         xt_list.append(denormalize(xt).cpu().detach().numpy())
         pos_list.append(pos.cpu().detach().numpy())
-
+    # pos_listの各要素にマイナスをつけて反転
+    pos_list = [[-x, -y] for x, y in pos_list]
+    # print(f"pos_list: {pos_list}")
     df_target_pos = pd.DataFrame(pos_list, columns=["x", "y"])
-    # print(f"df_target_pos: {df_target_pos}")
+    print(f"df_target_pos: {df_target_pos}")
     # print(f"df_target_pos_shape: {df_target_pos.shape}")
     # print(f"df_pos_shape: {df_target_pos.shape}")
     # 移動平均を適用
     xt_array = np.array(xt_list)
     df = pd.DataFrame(xt_array)
-    smoothed_df = moving_average_filter(df, window_size=30)
+    smoothed_df = moving_average_filter(df, window_size=20)
     smoothed_xt_list = smoothed_df.values.tolist()
     # プロットを実行
     # plot_data(df, smoothed_df)
@@ -81,10 +92,11 @@ def move(path, while_sleep_time=0):
         pygame.display.update()
         time.sleep(0.01)
     # print(f"smoothed_df:\n{smoothed_df}")
-
-    # print("end_effector_positions:", end_effector_positions)
+    # plot_data(df, smoothed_df)
     df_end_effector = pd.DataFrame(end_effector_positions, columns=["x", "y"])
-    # print(f"df_end_effector_shape: {df_end_effector.shape}")
+    print(f"df_end_effector:\n{df_end_effector}")
+    # print(df_end_effector)
+    # calculate_distance(df_end_effector, df_target_pos)
     plot_target_and_end_effector(df_target_pos, df_end_effector)
     pygame.quit()
 
@@ -110,8 +122,34 @@ def plot_target_and_end_effector(df_target_pos, df_end_effector):
     target_pos_center = df_target_pos - df_target_pos.mean() + 200
     end_effector_center = df_end_effector - df_end_effector.mean() + 200
 
+    # print(f"target_pos_center:\n{target_pos_center}")
+    # print(f"end_effector_center:\n{end_effector_center}")
+    # target_pos_centerとend_effector_centerとの距離を計算
+    calculate_distance = np.sqrt(
+        (target_pos_center["x"] - end_effector_center["x"]) ** 2
+        + (target_pos_center["y"] - end_effector_center["y"]) ** 2
+    )
+    df_distance = pd.DataFrame(calculate_distance, columns=["Distance"])
+    print(f"average_df_distance:\n{df_distance.mean()}")
+    # CSVファイルに保存
+    if not os.path.exists("output_data"):
+        os.mkdir("output_data")
+    df_distance.to_csv("output_data/distance.csv", index=False)
+    # df_distanceのプロット
+    plt.figure(figsize=(10, 6))
+    plt.plot(
+        df_distance.index, df_distance["Distance"], label="Distance", color="green"
+    )
+    plt.xlabel("Time Step")
+    plt.ylabel("Distance")
+    plt.title("Distance between Target Position and End Effector Position")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+    # print(f"target_pos_center:\n{target_pos_center}")
+    # print(f"end_effector_center:\n{end_effector_center}")
+
     # --- ④ プロット処理 ---
-    import matplotlib.pyplot as plt
 
     fig, ax = plt.subplots(1, 1, figsize=(12, 12))
     ax.plot(
@@ -140,6 +178,11 @@ def plot_target_and_end_effector(df_target_pos, df_end_effector):
     ax.set_xlabel("X", fontsize=30)
     ax.set_ylabel("Y", fontsize=30)
     plt.show()
+    # グラフの保存
+    if not os.path.exists("output_data"):
+        os.mkdir("output_data")
+    fig.savefig("output_data/target_and_end_effector.png", dpi=300, bbox_inches="tight")
+    plt.close(fig)
 
 
 # 円の軌道を描かせる
@@ -153,7 +196,7 @@ def draw_cirtcle():
     # 円の半径を150に設定
     r = 150
     # 円の軌道を描くための座標を格納するリストlに座標を追加
-    circle = np.arange(0, 3600, 1)
+    circle = np.arange(0, 720, 0.1)
     for i in tqdm.tqdm(range(len(circle))):
         x = r * np.cos(np.radians(i)) + x0
         y = r * np.sin(np.radians(i)) + y0
@@ -162,47 +205,53 @@ def draw_cirtcle():
     move(path_coords, while_sleep_time=0.001)
 
 
-# データのプロットを行う関数を定義
-def plot_data(
-    original_df,
-    smoothed_df,
-    num_cols=2,
-    figure_size=(15, 10),
-    title="Comparison of the Original and Smoothed Data",
-):
-    # 信号の数
-    num_signals = len(original_df.columns)
-    # 行数の計算
-    num_rows = (num_signals + num_cols - 1) // num_cols
-    # FigureとAxesの作成
-    fig, axes = plt.subplots(num_rows, num_cols, figsize=figure_size)
-    # np.ravel()で1次元配列に変換
-    axes = np.ravel(axes)
-    for i in range(num_signals):
-        ax = axes[i]
-        # x軸
-        x_original = original_df.index.to_numpy()
-        x_smoothed = smoothed_df.index.to_numpy()
-        # y軸
-        y_original = original_df.iloc[:, i].to_numpy()
-        y_smoothed = smoothed_df.iloc[:, i].to_numpy()
-        # 元データのプロット
-        ax.plot(x_original, y_original, label=f"Original Data{i + 1}", color="blue")
-        # 平滑化データのプロット
-        ax.plot(x_smoothed, y_smoothed, label=f"Smoothed Data{i + 1}", color="red")
-        # ラベルの設定
-        ax.set_xlabel("Time")
-        ax.set_ylabel("Signal Value")
-        ax.set_title(f"Signal{i + 1}")
+# xtの時系列変化をプロットする関数を定義
+# smoothed_xt_listのデータをプロットする
+# smoothed_dfのデータをsmoothed_dfのインデックスごとに12個のサブプロットに分けてプロットする
+# 縦6個，横2個のサブプロットを作成し、各サブプロットにxtの時系列変化をプロットする
+def plot_data(df, smoothed_df):
+    fig, axs = plt.subplots(6, 2, figsize=(6, 12))
+    for i in range(12):
+        ax = axs[i // 2, i % 2]
+        ax.plot(df.index, df[i], label=f"Original {i}", color="blue", alpha=0.5)
+        ax.plot(smoothed_df.index, smoothed_df[i], label=f"Smoothed {i}", color="red")
+        ax.set_title(f"Joint {i + 1}")
+        ax.set_xlabel("Time Step")
+        ax.set_ylabel("Value")
         ax.legend()
-    # 全体のタイトルの設定及びレイアウトの調整
-    plt.suptitle(title)
+        ax.grid(True)
     plt.tight_layout()
     plt.show()
 
 
 def moving_average_filter(df, window_size=10):
     return df.rolling(window=window_size, min_periods=1).mean()
+
+
+# # move関数内の引数で呼び出されているpathの座標とendeffectrorの座標の距離を計算する関数を定義
+# def calculate_distance(df_end_effector, df_target_pos):
+#     distances = []
+#     df_end_effector_coords = list(zip(df_end_effector["x"], df_end_effector["y"]))
+#     target_coords = list(zip(df_target_pos["x"], df_target_pos["y"]))
+#     for (x, y), (target_x, target_y) in zip(df_end_effector_coords, target_coords):
+#         distance = np.sqrt((x - target_x) ** 2 + (y - target_y) ** 2)
+#         distances.append(distance)
+#     average_distance = np.mean(distances)
+#     # CSVファイルに保存
+#     if not os.path.exists("output_data"):
+#         os.mkdir("output_data")
+#     df_distances = pd.DataFrame(distances, columns=["Distance"])
+#     df_distances.to_csv("output_data/distances.csv", index=False)
+#     # 平均距離を返す
+#     print(f"Average distance: {average_distance:.2f}")
+#     plt.plot(distances, label="Distance")
+#     plt.xlabel("Time Step")
+#     plt.ylabel("Distance")
+#     plt.title("Distance between Path and End Effector")
+#     plt.legend()
+#     plt.grid(True)
+#     plt.show()
+#     return average_distance
 
 
 # # 平滑化処理を行う関数を定義

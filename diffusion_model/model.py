@@ -1,4 +1,5 @@
 import math
+import os
 import time
 
 import numpy as np
@@ -23,13 +24,6 @@ class Model(nn.Module):
         self.pos_fc = nn.Linear(2, self.d)
 
     def forward(self, x: torch.Tensor, step: torch.Tensor, pos: torch.Tensor):
-        # #固定するインデックスと値を指定
-        # fixed_indeces = [4, 5]
-        # fixed_values = [0, 30]
-        # #固定値を代入
-        # for idx, val in zip(fixed_indeces, fixed_values):
-        #     x[:,idx] = val
-
         # テンソルxのゼロパディングを行う
         x = self.m(x)
         # テンソルxに位置情報を付与し、入力データに各要素の順序を反映させる
@@ -76,7 +70,14 @@ class Model(nn.Module):
             denoise_time = end - start
             denoise_time_list.append(denoise_time)
         # デノイズ処理にかかった平均時間を計算
-        print(f"Denoise time: {np.mean(denoise_time_list)} seconds")
+        # denoise_avg_time = np.mean(denoise_time_list)
+        # print(f"Denoise time: {denoise_avg_time} seconds")
+        # デノイズ平均時間を保存するディレクトリを作成
+        os.makedirs("output_data", exist_ok=True)
+        # デノイズ平均時間をcsvファイルに保存
+        df_denoise_time = pd.DataFrame(denoise_time_list, columns=["time"])
+        # print(f"df_denoise_time_shape: {df_denoise_time.shape}")
+        df_denoise_time.to_csv("output_data/denoise_time.csv", index=False)
         return xt
 
 
@@ -84,7 +85,7 @@ class Model(nn.Module):
 start_beta = 1e-4
 # β_T=0.02
 end_beta = 0.02
-steps = 25
+steps = 100
 n = 1024
 # 25要素の1次元テンソルβを生成
 beta = torch.FloatTensor(steps)
