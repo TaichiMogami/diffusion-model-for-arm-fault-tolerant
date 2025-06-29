@@ -11,7 +11,7 @@ from train_data_related import gen_data
 # 教師データを生成してdata/train.csvに保存する
 if __name__ == "__main__":
     df = pd.DataFrame()
-    for i in tqdm(range(100000000)):
+    for i in tqdm(range(1000000)):
         df = pd.concat(
             [df, gen_data(random.randint(300, 780), random.randint(100, 300))]
         )

@@ -29,7 +29,7 @@ class FaultInjector:
             xt[i] += noise
         return xt
 
-    def apply_dropout_fault(self, xt, index, dropout_prob=0.5):
+    def apply_dropout_fault(self, xt, index, dropout_prob):
         # xtの指定したインデックスをdropout_probの確率でゼロにする.
         # 故障適用後のテンソルを返す
         xt = xt.clone()

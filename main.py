@@ -18,7 +18,7 @@ def main():
     draw_cirtcle()
 
 
-def move(path, while_sleep_time=0):
+def move(path, while_sleep_time=0, fault_type=None, fault_param=None):
     pygame.init()
     display = pygame.display.set_mode((armdef.width, armdef.height))
     model = Model(steps).cuda()
@@ -40,12 +40,14 @@ def move(path, while_sleep_time=0):
         model.eval()
         pos = torch.FloatTensor([x, y]).cuda()
 
-        xt = fault_injector.apply_lock_fault(xt, index=[10, 11], lock_values=[0, 30])
-        # xt = fault_injector.apply_noise_fault(xt, index=[0, 1, 2, 3], std_dev=1)
-        # xt = fault_injector.apply_dropout_fault(xt, index=[7, 8], dropout_prob=0.7)
-        # xt = fault_injector.apply_delay_fault(
-        #     xt, index=[6, 7, 8, 9, 10, 11], delay_steps=1000
+        # xt = fault_injector.apply_lock_fault(
+        #     xt,
+        #     index=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+        #     lock_values=[0, 30, 30, 0, 0, 30, 30, 0, 0, 30, 30, 0],
         # )
+        # xt = fault_injector.apply_noise_fault(xt, index=[4, 5], std_dev=10.0)
+        # xt = fault_injector.apply_dropout_fault(xt, index=[4, 5], dropout_prob=1.0)
+        xt = fault_injector.apply_delay_fault(xt, index=[4, 5], delay_steps=1200)
 
         if not first:
             xt_normalize = normalize(xt)
@@ -54,6 +56,7 @@ def move(path, while_sleep_time=0):
             at_ = extract(t, xt.shape)
             xt_noised = torch.sqrt(at_) * xt_normalize + torch.sqrt(1 - at_) * noise
             xt = model.denoise(xt_noised, steps_, pos)
+            # print("after denoise:", xt)
         else:
             # xt = torch.randn(armdef.arm.spring_joint_count * 2).cuda()
             xt = model.denoise(xt, steps_, pos)
@@ -65,17 +68,17 @@ def move(path, while_sleep_time=0):
     # pos_listの各要素にマイナスをつけて反転
     pos_list = [[-x, -y] for x, y in pos_list]
     # print(f"pos_list: {pos_list}")
-    df_target_pos = pd.DataFrame(pos_list, columns=["x", "y"])
+    df_target_pos = pd.DataFrame(pos_list, columns=["target_x", "target_y"])
     print(f"df_target_pos: {df_target_pos}")
     # print(f"df_target_pos_shape: {df_target_pos.shape}")
     # print(f"df_pos_shape: {df_target_pos.shape}")
     # 移動平均を適用
     xt_array = np.array(xt_list)
     df = pd.DataFrame(xt_array)
+    # print(f"df:\n{df}")
     smoothed_df = moving_average_filter(df, window_size=20)
     smoothed_xt_list = smoothed_df.values.tolist()
     # プロットを実行
-    # plot_data(df, smoothed_df)
     # xt_list の計算を行ってその後、ローパスフィルタを適用
 
     directory = "output_data"
@@ -90,19 +93,29 @@ def move(path, while_sleep_time=0):
         pygame.draw.lines(display, (0, 0, 0), False, path, 10)
         armdef.arm.draw(display)
         pygame.display.update()
+        # surfaceをnumpy配列に変形
+        # frame = pygame.surfarray.array3d(pygame.display.get_surface())
+        # frameを転置
+        # frame = np.transpose(frame, (1, 0, 2))
+        # frames.append(frame)
         time.sleep(0.01)
+    # clip = mpy.ImageSequenceClip(frames, fps=30)
+    # clip.write_videofile("output.mp4", codec="libx264")
+    # n output.mp4をoutput_dataディレクトリに保存
+    # clip.write_videofile(os.path.join(directory, "output.mp4"), codec="libx264")
     # print(f"smoothed_df:\n{smoothed_df}")
-    # plot_data(df, smoothed_df)
-    df_end_effector = pd.DataFrame(end_effector_positions, columns=["x", "y"])
-    print(f"df_end_effector:\n{df_end_effector}")
-    # print(df_end_effector)
+    df_end_effector = pd.DataFrame(end_effector_positions, columns=["end_x", "end_y"])
+    # print(f"df_end_effector:\n{df_end_effector}")
+    pd.concat([df_target_pos, df_end_effector], axis=1).to_csv(
+        os.path.join(directory, "target_and_end_effector.csv"), index=False
+    )
     # calculate_distance(df_end_effector, df_target_pos)
     plot_target_and_end_effector(df_target_pos, df_end_effector)
     pygame.quit()
 
 
-def save_image(display, filename):
-    pygame.image.save(display, filename)
+# def save_image(display, filename):
+#     pygame.image.save(display, filename)
 
 
 def plot_target_and_end_effector(df_target_pos, df_end_effector):
@@ -115,8 +128,8 @@ def plot_target_and_end_effector(df_target_pos, df_end_effector):
         df_end_effector = df_end_effector.to_frame().T
 
     # --- ② 必要な列を明示的に抽出（xとy） ---
-    df_target_pos = df_target_pos[["x", "y"]]
-    df_end_effector = df_end_effector[["x", "y"]]
+    df_target_pos = df_target_pos[["target_x", "target_y"]]
+    df_end_effector = df_end_effector[["end_x", "end_y"]]
 
     # --- ③ 中心化処理 ---
     target_pos_center = df_target_pos - df_target_pos.mean() + 200
@@ -126,26 +139,28 @@ def plot_target_and_end_effector(df_target_pos, df_end_effector):
     # print(f"end_effector_center:\n{end_effector_center}")
     # target_pos_centerとend_effector_centerとの距離を計算
     calculate_distance = np.sqrt(
-        (target_pos_center["x"] - end_effector_center["x"]) ** 2
-        + (target_pos_center["y"] - end_effector_center["y"]) ** 2
+        (target_pos_center["target_x"] - end_effector_center["end_x"]) ** 2
+        + (target_pos_center["target_y"] - end_effector_center["end_y"]) ** 2
     )
     df_distance = pd.DataFrame(calculate_distance, columns=["Distance"])
+    # mean_distance = df_distance.mean().item()
     print(f"average_df_distance:\n{df_distance.mean()}")
     # CSVファイルに保存
     if not os.path.exists("output_data"):
         os.mkdir("output_data")
     df_distance.to_csv("output_data/distance.csv", index=False)
     # df_distanceのプロット
+    df_distance_index_ndarray = df_distance.index.to_numpy()
+    df_distance_ndarray = df_distance.values.flatten()
+    # print(f"df_distance_index_ndarray:\n{df_distance_index_ndarray}")
+    # print(f"df_distance_ndarray:\n{df_distance_ndarray}")
     plt.figure(figsize=(10, 6))
     plt.plot(
-        df_distance.index, df_distance["Distance"], label="Distance", color="green"
+        df_distance_index_ndarray,
+        df_distance_ndarray,
+        label="Distance",
+        color="green",
     )
-    plt.xlabel("Time Step")
-    plt.ylabel("Distance")
-    plt.title("Distance between Target Position and End Effector Position")
-    plt.legend()
-    plt.grid(True)
-    plt.show()
     # print(f"target_pos_center:\n{target_pos_center}")
     # print(f"end_effector_center:\n{end_effector_center}")
 
@@ -153,14 +168,14 @@ def plot_target_and_end_effector(df_target_pos, df_end_effector):
 
     fig, ax = plt.subplots(1, 1, figsize=(12, 12))
     ax.plot(
-        target_pos_center["x"].values,
-        target_pos_center["y"].values,
+        target_pos_center["target_x"].values,
+        target_pos_center["target_y"].values,
         label="Target Position",
         color="blue",
     )
     ax.plot(
-        end_effector_center["x"].values,
-        end_effector_center["y"].values,
+        end_effector_center["end_x"].values,
+        end_effector_center["end_y"].values,
         label="End Effector Position",
         color="red",
     )
@@ -182,7 +197,6 @@ def plot_target_and_end_effector(df_target_pos, df_end_effector):
     if not os.path.exists("output_data"):
         os.mkdir("output_data")
     fig.savefig("output_data/target_and_end_effector.png", dpi=300, bbox_inches="tight")
-    plt.close(fig)
 
 
 # 円の軌道を描かせる
@@ -196,7 +210,7 @@ def draw_cirtcle():
     # 円の半径を150に設定
     r = 150
     # 円の軌道を描くための座標を格納するリストlに座標を追加
-    circle = np.arange(0, 720, 0.1)
+    circle = np.arange(0, 1800, 1)
     for i in tqdm.tqdm(range(len(circle))):
         x = r * np.cos(np.radians(i)) + x0
         y = r * np.sin(np.radians(i)) + y0
