@@ -206,7 +206,6 @@ def plot_target_and_end_effector(df_target_pos, df_end_effector):
         os.mkdir("output_data")
     fig.savefig("output_data/target_and_end_effector.png", dpi=300, bbox_inches="tight")
 
-
 # 円の軌道を描かせる
 def draw_cirtcle():
     # 円の軌道を描くための座標を格納するリストlを設定

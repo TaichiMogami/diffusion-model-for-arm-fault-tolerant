@@ -11,6 +11,7 @@ def gen_data(x, y):
     df = pd.DataFrame()
     # yamanoboriメソッドを使用して、armdef.armとx, y, 100を引数として渡し、input_, x_, y_, thetaを取得
     input_, x_, y_, theta = yamanobori(armdef.arm, x, y, 100)
+    #input_ = gen_random_inputs(armdef.arm)
     df = pd.DataFrame([input_])
     armdef.arm.calc(input_)
     # データフレームにデータを追加
