@@ -33,21 +33,22 @@ def move(path, while_sleep_time=0, fault_type=None, fault_param=None):
     end_effector_positions = []
     # 故障に関するインスタンスを生成
     fault_injector = FaultInjector(device="cuda")
-    xt_buffer = []
-    # 全ての xt を保存
+    generation_time_list = []
     for step, (x, y) in enumerate(path):
+        start_time = time.perf_counter()
         # 推論の実行
         model.eval()
         pos = torch.FloatTensor([x, y]).cuda()
 
-        # xt = fault_injector.apply_lock_fault(
-        #     xt,
-        #     index=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-        #     lock_values=[0, 30, 30, 0, 0, 30, 30, 0, 0, 30, 30, 0],
-        # )
+        xt = fault_injector.apply_lock_fault(
+            xt,
+            index=[0, 1],
+            lock_values=[0, 30],
+        )
+        print(xt)
         # xt = fault_injector.apply_noise_fault(xt, index=[4, 5], std_dev=10.0)
         # xt = fault_injector.apply_dropout_fault(xt, index=[4, 5], dropout_prob=1.0)
-        xt = fault_injector.apply_delay_fault(xt, index=[4, 5], delay_steps=1200)
+        # xt = fault_injector.apply_delay_fault(xt, index=[4, 5], delay_steps=1200)
 
         if not first:
             xt_normalize = normalize(xt)
@@ -62,9 +63,16 @@ def move(path, while_sleep_time=0, fault_type=None, fault_param=None):
             xt = model.denoise(xt, steps_, pos)
             steps_ = 8
             first = False
-        # prev_xt = xt.clone()
         xt_list.append(denormalize(xt).cpu().detach().numpy())
         pos_list.append(pos.cpu().detach().numpy())
+
+        end_time = time.perf_counter()
+        generation_time_list.append(end_time - start_time)
+    avg_generation_time = np.mean(generation_time_list)
+    print(f"Average generation time: {avg_generation_time:.4f} seconds")
+    df_generation_time = pd.DataFrame(generation_time_list, columns=["Generation Time"])
+    os.makedirs("output_data", exist_ok=True)
+    df_generation_time.to_csv("output_data/generation_time.csv", index=False)
     # pos_listの各要素にマイナスをつけて反転
     pos_list = [[-x, -y] for x, y in pos_list]
     # print(f"pos_list: {pos_list}")
@@ -210,7 +218,7 @@ def draw_cirtcle():
     # 円の半径を150に設定
     r = 150
     # 円の軌道を描くための座標を格納するリストlに座標を追加
-    circle = np.arange(0, 1800, 1)
+    circle = np.arange(0, 7200, 1)
     for i in tqdm.tqdm(range(len(circle))):
         x = r * np.cos(np.radians(i)) + x0
         y = r * np.sin(np.radians(i)) + y0

@@ -43,10 +43,8 @@ class Model(nn.Module):
 
     # デノイズ処理を行う関数を定義
     def denoise(self, xt: torch.Tensor, steps: int, pos):
-        denoise_time_list = []
         # ノイズを加えたときとは逆方向にデノイズ処理を行う
         for i in reversed(range(1, steps)):
-            start = time.perf_counter()
             # テンソルの要素がiのテンソルを生成し、cudaメソッドを使用してGPUに転送
             step = torch.FloatTensor([i]).cuda()
             # Xtと同じサイズのテンソルを生成する
@@ -66,18 +64,6 @@ class Model(nn.Module):
                     xt - (beta[i] / torch.sqrt(1 - alpha_[i])) * self(xt_, step, pos)
                 ) + torch.sqrt((1 - alpha_[i - 1]) / (1 - alpha_[i]) * beta[i]) * z
             xt = xt.view(-1)
-            end = time.perf_counter()
-            denoise_time = end - start
-            denoise_time_list.append(denoise_time)
-        # デノイズ処理にかかった平均時間を計算
-        # denoise_avg_time = np.mean(denoise_time_list)
-        # print(f"Denoise time: {denoise_avg_time} seconds")
-        # デノイズ平均時間を保存するディレクトリを作成
-        os.makedirs("output_data", exist_ok=True)
-        # デノイズ平均時間をcsvファイルに保存
-        df_denoise_time = pd.DataFrame(denoise_time_list, columns=["time"])
-        # print(f"df_denoise_time_shape: {df_denoise_time.shape}")
-        df_denoise_time.to_csv("output_data/denoise_time.csv", index=False)
         return xt
 
 
